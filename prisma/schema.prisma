@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  salt         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+/// Key-value store for session secret and migration flags
+model AppMeta {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model AgentConfig {
+  id      Int     @id @default(1)
+  name    String  @default("")
+  prompt  String  @default("")
+  baseUrl String  @default("")
+  model   String  @default("")
+  apiKey  String  @default("")
+  enabled Boolean @default(true)
+}
+
+model LineConfig {
+  id                 Int     @id @default(1)
+  channelAccessToken String  @default("")
+  channelSecret      String  @default("")
+  webhookConfirmed   Boolean @default(false)
+  lastUserId         String  @default("")
+}
+
+model FlexTemplate {
+  id               String   @id
+  displayNameTh    String
+  conditionKey     String
+  modelDescription String   @default("")
+  triggerExamples  String   @default("[]")
+  variables        String   @default("[]")
+  kind             String
+  fields           String   @default("{}")
+  enabled          Boolean  @default(true)
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model WebhookUser {
+  userId      String   @id
+  displayHint String   @default("")
+  lastSeenAt  DateTime @updatedAt
+}
