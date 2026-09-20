@@ -1,0 +1,15 @@
+services:
+  linedev:
+    build: .
+    container_name: softnix-linedev
+    ports:
+      - "3456:3456"
+    volumes:
+      - ./data:/app/data
+    environment:
+      NODE_ENV: production
+      PORT: "3456"
+      DATABASE_URL: file:/app/data/linedev.db
+      LINEDEV_SESSION_SECRET: ${LINEDEV_SESSION_SECRET:?set LINEDEV_SESSION_SECRET in .env}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
+    restart: unless-stopped
