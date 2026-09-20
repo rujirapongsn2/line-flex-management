@@ -1,28 +1,28 @@
 # Softnix LineDev — multi-stage production image (SQLite + Next.js)
-FROM node:22-bookworm-slim AS deps
+# Uses node:22-alpine (cached locally when Docker Hub bookworm pull times out)
+FROM node:22-alpine AS deps
 WORKDIR /app
-RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache openssl libc6-compat ca-certificates
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma
 RUN npm ci
 
-FROM node:22-bookworm-slim AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
-RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache openssl libc6-compat ca-certificates
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
-# Build-time placeholders (runtime uses volume + compose env)
 ENV DATABASE_URL="file:/app/data/linedev.db"
 ENV LINEDEV_SESSION_SECRET="build-time-placeholder-change-me"
 RUN mkdir -p data \
   && npx prisma generate \
   && npm run build
 
-FROM node:22-bookworm-slim AS runner
+FROM node:22-alpine AS runner
 WORKDIR /app
-RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache openssl libc6-compat ca-certificates
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3456

@@ -76,6 +76,29 @@ const TITLES: Record<PageId, { h1: string; crumb: string }> = {
   },
 };
 
+
+function MenuToggleBtn({ open, onClick }: { open: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className="menu-toggle"
+      aria-label={open ? "ปิดเมนู" : "เปิดเมนู"}
+      aria-expanded={open}
+      onClick={onClick}
+    >
+      {open ? (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M6 6l12 12M18 6L6 18" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M4 7h16M4 12h16M4 17h16" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 export default function LineDevApp() {
   const [hydrated, setHydrated] = useState(false);
   const [state, setState] = useState<ConsoleState>(() => ({
@@ -102,6 +125,7 @@ export default function LineDevApp() {
     null
   );
   const [authUsername, setAuthUsername] = useState("admin");
+  const [navOpen, setNavOpen] = useState(false);
 
   const refreshServerRuntime = useCallback(async () => {
     const status = await fetchRuntimeStatus();
@@ -182,6 +206,7 @@ export default function LineDevApp() {
   );
 
   const navigate = useCallback((next: PageId, id?: string | null) => {
+    setNavOpen(false);
     setPage(next);
     setEditId(id ?? null);
     writeUrl(next, id);
@@ -251,14 +276,25 @@ export default function LineDevApp() {
   const showShellTopbar = page !== "agent";
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${navOpen ? " nav-open" : ""}`}>
+      {navOpen ? (
+        <button
+          type="button"
+          className="nav-backdrop"
+          aria-label="ปิดเมนู"
+          onClick={() => setNavOpen(false)}
+        />
+      ) : null}
       <Sidebar page={page} onNavigate={(p) => navigate(p)} />
       <div className="main">
         {showShellTopbar && (
           <header className="topbar">
-            <div>
-              <h1>{title.h1}</h1>
-              <div className="crumb">{title.crumb}</div>
+            <div className="topbar-left">
+              <MenuToggleBtn open={navOpen} onClick={() => setNavOpen((v) => !v)} />
+              <div>
+                <h1>{title.h1}</h1>
+                <div className="crumb">{title.crumb}</div>
+              </div>
             </div>
             <div className="topbar-right">
               {(page === "overview" ||
@@ -281,6 +317,8 @@ export default function LineDevApp() {
             onClearPendingHint={() => setPendingHint(null)}
             onSave={saveAgent}
             onProfile={() => navigate("profile")}
+            menuOpen={navOpen}
+            onMenuToggle={() => setNavOpen((v) => !v)}
           />
         ) : (
           <div className="content">

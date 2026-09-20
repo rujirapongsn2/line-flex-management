@@ -15,6 +15,8 @@ type Props = {
   onClearPendingHint?: () => void;
   onSave: (agent: AgentConfig) => void;
   onProfile?: () => void;
+  menuOpen?: boolean;
+  onMenuToggle?: () => void;
 };
 
 export default function AgentPage({
@@ -24,6 +26,8 @@ export default function AgentPage({
   onClearPendingHint,
   onSave,
   onProfile,
+  menuOpen = false,
+  onMenuToggle,
 }: Props) {
   const [draft, setDraft] = useState<AgentConfig>(agent);
   const [savedFlash, setSavedFlash] = useState(false);
@@ -81,9 +85,30 @@ export default function AgentPage({
   return (
     <>
       <header className="topbar" style={{ position: "relative" }}>
-        <div>
-          <h1>Agent</h1>
-          <div className="crumb">ตั้งค่าบุคลิก Prompt และโมเดล</div>
+        <div className="topbar-left">
+          {onMenuToggle ? (
+            <button
+              type="button"
+              className="menu-toggle"
+              aria-label={menuOpen ? "ปิดเมนู" : "เปิดเมนู"}
+              aria-expanded={menuOpen}
+              onClick={onMenuToggle}
+            >
+              {menuOpen ? (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M4 7h16M4 12h16M4 17h16" />
+                </svg>
+              )}
+            </button>
+          ) : null}
+          <div>
+            <h1>Agent</h1>
+            <div className="crumb">ตั้งค่าบุคลิก Prompt และโมเดล</div>
+          </div>
         </div>
         <div className="topbar-right">
           {savedFlash ? (
@@ -96,13 +121,7 @@ export default function AgentPage({
         </div>
       </header>
       <div className="content">
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1.05fr .95fr",
-            gap: 16,
-          }}
-        >
+        <div className="grid-2" style={{ gap: 16 }}>
           <div className="stack" style={{ gap: 14 }}>
             <div className="card" style={{ padding: "16px 18px" }}>
               <div className="grid-2" style={{ gap: 12 }}>
