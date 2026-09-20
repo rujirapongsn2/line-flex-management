@@ -1,0 +1,16 @@
+node_modules/
+.next/
+out/
+build/
+.env
+.env.local
+*.tsbuildinfo
+data/*.db
+data/*.db-*
+data/*.json
+data/auth*
+data/auth-secret*
+data/runtime-config*
+!data/.gitkeep
+.DS_Store
+._*
