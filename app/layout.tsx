@@ -2,8 +2,11 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Softnix LineDev Console",
-  description: "คอนโซลผู้ดูแล Agent สำหรับ LINE Flex Message",
+  title: "FMM by Softnix",
+  description: "คอนโซลผู้ดูแล Agent สำหรับ LINE Flex Message — FMM by Softnix",
+  icons: {
+    icon: "/favicon-softnix.png",
+  },
 };
 
 export default function RootLayout({

@@ -65,7 +65,7 @@ export function defaultFields(id: TemplateId): Record<string, string> {
   switch (id) {
     case "bubble-simple":
       return {
-        altText: "ข้อความจาก Softnix LineDev",
+        altText: "ข้อความจาก FMM by Softnix",
         title: "สวัสดีจาก Softnix",
         body: "นี่คือ Flex Message แบบ bubble-simple สำหรับทดสอบ LINE Messaging API",
         buttonLabel: "เปิดเว็บไซต์",

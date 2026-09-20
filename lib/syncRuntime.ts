@@ -13,10 +13,36 @@ export type RuntimeSyncStatus = {
   error?: string;
 };
 
+export type RuntimeConfigPayload = {
+  agent: ConsoleState["agent"];
+  line: ConsoleState["line"];
+  templates: ConsoleState["templates"];
+};
+
+export type RuntimeConfigResponse = RuntimeSyncStatus & {
+  config?: RuntimeConfigPayload;
+};
+
+function serverHasData(cfg: RuntimeConfigPayload | undefined): boolean {
+  if (!cfg) return false;
+  const a = cfg.agent;
+  const l = cfg.line;
+  return Boolean(
+    (a?.apiKey || "").trim() ||
+      (a?.prompt || "").trim() ||
+      (a?.name || "").trim() ||
+      (l?.channelAccessToken || "").trim() ||
+      (l?.channelSecret || "").trim() ||
+      (Array.isArray(cfg.templates) && cfg.templates.length > 0)
+  );
+}
+
+export { serverHasData };
+
 /** Push console agent/line/templates to server for webhook use. */
 export async function syncRuntimeConfig(
   state: ConsoleState
-): Promise<RuntimeSyncStatus> {
+): Promise<RuntimeConfigResponse> {
   try {
     const res = await fetch("/api/runtime-config", {
       method: "POST",
@@ -27,7 +53,7 @@ export async function syncRuntimeConfig(
         templates: state.templates,
       }),
     });
-    const data = (await res.json()) as RuntimeSyncStatus & { error?: string };
+    const data = (await res.json()) as RuntimeConfigResponse & { error?: string };
     if (!res.ok || !data.ok) {
       return {
         ok: false,
@@ -43,10 +69,11 @@ export async function syncRuntimeConfig(
   }
 }
 
-export async function fetchRuntimeStatus(): Promise<RuntimeSyncStatus> {
+/** Load full config + status from SQLite (server). */
+export async function fetchRuntimeConfig(): Promise<RuntimeConfigResponse> {
   try {
     const res = await fetch("/api/runtime-config");
-    const data = (await res.json()) as RuntimeSyncStatus & { error?: string };
+    const data = (await res.json()) as RuntimeConfigResponse & { error?: string };
     if (!res.ok) {
       return { ok: false, error: data.error || `HTTP ${res.status}` };
     }
@@ -57,4 +84,11 @@ export async function fetchRuntimeStatus(): Promise<RuntimeSyncStatus> {
       error: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+/** Status-only helper (same GET; ignores config). */
+export async function fetchRuntimeStatus(): Promise<RuntimeSyncStatus> {
+  const full = await fetchRuntimeConfig();
+  const { config: _c, ...rest } = full;
+  return rest;
 }

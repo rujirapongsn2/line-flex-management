@@ -41,7 +41,7 @@ export default function SandboxPage({ state, readiness }: Props) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<SimResult | null>(null);
 
-  const [plainText, setPlainText] = useState("ทดสอบโทเคนจาก Softnix LineDev Console");
+  const [plainText, setPlainText] = useState("ทดสอบโทเคนจาก FMM by Softnix");
   const [tokenBusy, setTokenBusy] = useState(false);
   const [tokenResult, setTokenResult] = useState<string | null>(null);
 

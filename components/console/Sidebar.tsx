@@ -63,10 +63,15 @@ export default function Sidebar({ page, onNavigate }: Props) {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <div className="brand-mark">S</div>
+        <img
+          className="brand-logo"
+          src="/logo-softnix.png"
+          alt="Softnix"
+          width={120}
+          height={40}
+        />
         <div className="brand-text">
-          <strong>Softnix LineDev</strong>
-          <span>Console · ผู้ดูแล Agent</span>
+          <strong>FMM by Softnix</strong>
         </div>
       </div>
       <nav className="nav">
@@ -90,9 +95,6 @@ export default function Sidebar({ page, onNavigate }: Props) {
           <span className="ico">{ICONS.profile}</span>
           โปรไฟล์
         </button>
-        <div className="nav-hint">
-          คอนโซลสำหรับผู้ดูแล Agent ที่คุยบน LINE — ไม่ใช่เครื่องมือนักพัฒนา
-        </div>
       </nav>
     </aside>
   );

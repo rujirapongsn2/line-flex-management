@@ -248,7 +248,7 @@ export default function AgentPage({
                   placeholder="sk-…"
                 />
                 <div className="hint">
-                  เก็บในเบราว์เซอร์ · กด «บันทึกทั้งหมด» จะซิงก์ขึ้นเซิร์ฟเวอร์ให้ webhook ใช้
+                  กด «บันทึกทั้งหมด» จะซิงก์ขึ้นเซิร์ฟเวอร์ให้ webhook ใช้
                 </div>
               </div>
             </div>

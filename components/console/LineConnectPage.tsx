@@ -160,7 +160,7 @@ export default function LineConnectPage({
               ) : null}
             </div>
             <div className="hint">
-              เก็บในเบราว์เซอร์ · กดบันทึกจะซิงก์ขึ้นเซิร์ฟเวอร์ให้ webhook ใช้ตอบกลับ
+              กดบันทึกจะซิงก์ขึ้นเซิร์ฟเวอร์ให้ webhook ใช้ตอบกลับ
             </div>
           </div>
         </div>
@@ -179,7 +179,7 @@ export default function LineConnectPage({
               placeholder="ทางเลือก — สำหรับตรวจลายเซ็น webhook"
             />
             <div className="hint mt-8">
-              ซิงก์ขึ้นเซิร์ฟเวอร์เมื่อกดบันทึก · หรือตั้ง LINE_CHANNEL_SECRET ใน env
+              หรือตั้ง LINE_CHANNEL_SECRET ใน env
             </div>
             <button
               type="button"

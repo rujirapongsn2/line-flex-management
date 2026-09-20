@@ -7,7 +7,9 @@ import {
   saveConsoleState,
 } from "@/lib/consoleStore";
 import {
+  fetchRuntimeConfig,
   fetchRuntimeStatus,
+  serverHasData,
   syncRuntimeConfig,
   type RuntimeSyncStatus,
 } from "@/lib/syncRuntime";
@@ -61,7 +63,7 @@ function writeUrl(page: PageId, editId?: string | null) {
 }
 
 const TITLES: Record<PageId, { h1: string; crumb: string }> = {
-  overview: { h1: "ภาพรวม", crumb: "Softnix LineDev Console · สถานะความพร้อม" },
+  overview: { h1: "ภาพรวม", crumb: "FMM by Softnix · สถานะความพร้อม" },
   agent: { h1: "Agent", crumb: "ตั้งค่าบุคลิก Prompt และโมเดล" },
   flex: { h1: "เทมเพลต Flex", crumb: "จัดการการ์ดตามเงื่อนไขใน Prompt" },
   "flex-edit": { h1: "เทมเพลต Flex — แก้ไข", crumb: "ฟอร์ม + พรีวิว LINE" },
@@ -143,35 +145,57 @@ export default function LineDevApp() {
   );
 
   useEffect(() => {
-    const loaded = loadConsoleState();
-    setState(loaded);
     const { page: p, editId: id } = readPageFromUrl();
     setPage(p);
     setEditId(id);
-    setHydrated(true);
 
-    void fetch("/api/auth/me")
-      .then(async (res) => {
-        if (res.status === 401) {
+    void (async () => {
+      try {
+        const meRes = await fetch("/api/auth/me");
+        if (meRes.status === 401) {
           window.location.href = "/login";
           return;
         }
-        const data = (await res.json()) as { username?: string };
-        if (data.username) setAuthUsername(data.username);
-      })
-      .catch(() => {
-        /* ignore — middleware should gate */
-      });
+        const me = (await meRes.json()) as { username?: string };
+        if (me.username) setAuthUsername(me.username);
+      } catch {
+        /* middleware should gate */
+      }
 
-    // Auto-sync once on mount if local state already has keys
-    if (
-      (loaded.agent.apiKey || "").trim() ||
-      (loaded.line.channelAccessToken || "").trim()
-    ) {
-      void syncRuntimeConfig(loaded).then((r) => setServerRuntime(r));
-    } else {
-      void fetchRuntimeStatus().then((r) => setServerRuntime(r));
-    }
+      const local = loadConsoleState();
+      const remote = await fetchRuntimeConfig();
+
+      if (remote.ok && serverHasData(remote.config)) {
+        // SQLite is source of truth across browsers
+        setState({
+          agent: remote.config!.agent,
+          line: remote.config!.line,
+          templates: remote.config!.templates || [],
+        });
+        setServerRuntime(remote);
+      } else if (
+        (local.agent.apiKey || "").trim() ||
+        (local.line.channelAccessToken || "").trim() ||
+        (local.templates || []).length > 0
+      ) {
+        // One-shot migrate: DB empty, browser cache has data
+        setState(local);
+        const pushed = await syncRuntimeConfig(local);
+        setServerRuntime(pushed);
+        if (pushed.ok && pushed.config) {
+          setState({
+            agent: pushed.config.agent,
+            line: pushed.config.line,
+            templates: pushed.config.templates || [],
+          });
+        }
+      } else {
+        setState(local);
+        setServerRuntime(remote.ok ? remote : { ok: false, error: remote.error });
+      }
+
+      setHydrated(true);
+    })();
   }, []);
 
   useEffect(() => {
@@ -266,7 +290,7 @@ export default function LineDevApp() {
     return (
       <div className="app-shell">
         <div className="content" style={{ padding: 40 }}>
-          กำลังโหลด Softnix LineDev Console…
+          กำลังโหลด FMM by Softnix…
         </div>
       </div>
     );

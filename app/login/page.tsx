@@ -38,9 +38,15 @@ export default function LoginPage() {
     <div className="login-page">
       <form className="login-card" onSubmit={onSubmit}>
         <div className="login-brand">
-          <div className="brand-mark">S</div>
+          <img
+            className="login-logo"
+            src="/logo-softnix.png"
+            alt="Softnix"
+            width={160}
+            height={92}
+          />
           <div>
-            <strong>Softnix LineDev</strong>
+            <strong>FMM by Softnix</strong>
             <span>เข้าสู่ระบบคอนโซลผู้ดูแล</span>
           </div>
         </div>
