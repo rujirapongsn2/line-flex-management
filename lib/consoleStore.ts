@@ -1,11 +1,13 @@
 import { defaultFields } from "./flexTemplates";
+import { checkinAskTemplateFields, checkinResultTemplateFields } from "./checkinFlex";
+import { getLiffOpenUrl } from "./liffConfig";
 import type {
   AgentConfig,
   ConsoleState,
   ConsoleTemplate,
   LineConfig,
 } from "./types";
-import { CONSOLE_STORAGE_KEY, LLM_STORAGE_KEY, STORAGE_KEY } from "./types";
+import { CONSOLE_STORAGE_KEY, LLM_STORAGE_KEY, STORAGE_KEY, defaultLocationAction } from "./types";
 
 function uid(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
@@ -88,6 +90,40 @@ export function seedTemplates(): ConsoleTemplate[] {
       enabled: true,
     },
     {
+      id: "checkin_ask",
+      displayNameTh: "แชร์พิกัดค้นหาใกล้เคียง",
+      conditionKey: "checkin_ask",
+      modelDescription:
+        "เมื่อลูกค้าถามสถานที่ใกล้เคียง / ใกล้ฉัน / แถวนี้มี… / 7-11 / โรงพยาบาล / คอนโด / ห้าง หรือขอแชร์พิกัด — ส่งการ์ด CTA เปิด LIFF ให้แชร์ GPS (ใส่ fields.tag เป็น Longdo tag เช่น 7-11,hospital ถ้าทราบจากคำถาม; ไม่ใช้ LINE location picker เป็นหลัก)",
+      triggerExamples: [
+        "แถวนี้มีร้าน 7-11 ที่ไหนบ้าง",
+        "มีโรงพยาบาลใกล้ฉันไหม",
+        "ค้นหาคอนโดใกล้เคียง",
+        "เช็คอิน",
+        "แชร์พิกัด",
+      ],
+      variables: [],
+      kind: "bubble-simple",
+      fields: checkinAskTemplateFields(),
+      enabled: true,
+    },
+    {
+      id: "nearby_results",
+      displayNameTh: "ผลค้นหาใกล้เคียง",
+      conditionKey: "nearby_results",
+      modelDescription:
+        "การ์ดรายการ POI จาก Longdo หลังได้พิกัด (สร้างจาก /api/poi/search — ปกติไม่เรียกจากโมเดลโดยตรง)",
+      triggerExamples: [],
+      variables: [
+        { name: "lat", example: "13.7563", required: true },
+        { name: "lng", example: "100.5018", required: true },
+        { name: "time", example: "21 ก.ย. 2569 11:00", required: false },
+      ],
+      kind: "bubble-simple",
+      fields: checkinResultTemplateFields(),
+      enabled: true,
+    },
+    {
       id: uid("tpl"),
       displayNameTh: "รายการข่าว",
       conditionKey: "news_list",
@@ -112,6 +148,9 @@ export function defaultAgentPrompt(): string {
 เมื่อยืนยันนัดหมาย → เรียกเงื่อนไข confirm_appointment
 เมื่อสรุปสถานะงาน → เรียกเงื่อนไข status_summary
 เมื่อส่งข่าว/ประกาศ → เรียกเงื่อนไข news_list
+เมื่อลูกค้าถามสถานที่ใกล้เคียง / ใกล้ฉัน / แถวนี้มี… / 7-11 / โรงพยาบาล / คอนโด / ห้าง หรือขอแชร์พิกัด/เช็คอิน → ต้องเรียกเงื่อนไข checkin_ask ทันที (ส่ง Flex การ์ดเปิด LIFF ให้แชร์ GPS พร้อม fields.tag ถ้าทราบ เช่น 7-11 — ห้ามใช้ location picker ของ LINE เป็นหลัก; ผลค้นหา Longdo จะส่งหลังได้พิกัดจาก LIFF)
+
+สำคัญมาก: ห้ามตอบข้อความธรรมดาว่า «ไม่มีข้อมูล» / «ไม่พบ» / «ไม่มีในระบบ» เมื่อยังไม่ได้พิกัด — ต้องส่ง checkin_ask ก่อนเสมอ
 
 ห้ามส่ง Flex ที่ไม่มีในรายการเทมเพลตที่เปิดใช้งาน
 ถ้าไม่แน่ใจ ให้ถามกลับด้วยข้อความธรรมดาก่อน`;
@@ -134,6 +173,9 @@ export function defaultLine(): LineConfig {
     channelSecret: "",
     webhookConfirmed: false,
     lastUserId: "",
+    liffId: "",
+    longdoApiKey: "",
+    locationAction: defaultLocationAction(),
   };
 }
 

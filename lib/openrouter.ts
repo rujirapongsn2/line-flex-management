@@ -80,7 +80,7 @@ export async function chatCompletion(
     Authorization: `Bearer ${key}`,
     Accept: "application/json",
     // Cloudflare / Softnix GenAI often block bare fetch without UA (error 1010)
-    "User-Agent": "FMM-by-Softnix/1.0 (+https://line.rujirapong.us)",
+    "User-Agent": "Softnix-LineDev/1.0 (+https://line.rujirapong.us)",
   };
   if (isOpenRouter) {
     headers["HTTP-Referer"] = "https://line.rujirapong.us";

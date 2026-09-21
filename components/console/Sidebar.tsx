@@ -63,15 +63,17 @@ export default function Sidebar({ page, onNavigate }: Props) {
   return (
     <aside className="sidebar">
       <div className="brand">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           className="brand-logo"
           src="/logo-softnix.png"
           alt="Softnix"
-          width={120}
-          height={40}
+          width={36}
+          height={36}
         />
         <div className="brand-text">
           <strong>FMM by Softnix</strong>
+          <span>Flex Message Management</span>
         </div>
       </div>
       <nav className="nav">

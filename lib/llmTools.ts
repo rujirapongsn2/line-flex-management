@@ -3,6 +3,9 @@ import {
   buildFlex,
   defaultFields,
 } from "./flexTemplates";
+import { buildLocationAskFlex } from "./nearbyFlex";
+import { mapIntentToLongdoTag } from "./longdo";
+import { getEnvLiffId } from "./liffConfig";
 import type { ConsoleTemplate, FlexMessage, TemplateId } from "./types";
 import {
   chatCompletion,
@@ -30,11 +33,12 @@ const BUILTIN_IDS = new Set(TEMPLATE_META.map((t) => t.id));
 
 const SYSTEM_PROMPT = `You are a LINE Flex Message assistant (ผู้ช่วย Flex Message สำหรับ LINE).
 Prefer calling render_flex_template when the user wants a rich card / carousel / product / news message.
+NEARBY / LOCATION (mandatory): When the user asks nearby places / ใกล้เคียง / ใกล้ฉัน / แถวนี้มี… / 7-11 / โรงพยาบาล / คอนโด / ห้าง or check-in / แชร์พิกัด — you MUST call render_flex_template with condition_key=checkin_ask and set fields.tag to a Longdo tag when known (e.g. 7-11, hospital, condominium, department_store). Never reply with plain text like «ไม่มีข้อมูล» / «ไม่พบ» / «ไม่มีในระบบ» without location first — always send the LIFF checkin_ask card so the user can share GPS. Do not use LINE location picker as primary.
 Use condition_key from the enabled templates list when provided.
 Use HTTPS image URLs only. Softnix accent (#2786C2) is informational only — templates already apply it.
 If the request is unclear, ask briefly in Thai or pick bubble-simple / the closest condition.
 You may call list_flex_templates first to see available templates.
-Use send_text_reply only for plain text fallback (not flex).
+Use send_text_reply only for plain text fallback (not flex) — never for nearby/POI questions.
 ตอบสั้น ๆ เป็นภาษาไทยได้เมื่อคุยกับผู้ใช้.`;
 
 export const LLM_TOOLS: OpenRouterTool[] = [
@@ -56,7 +60,7 @@ export const LLM_TOOLS: OpenRouterTool[] = [
     function: {
       name: "render_flex_template",
       description:
-        "Build a LINE Flex Message from condition_key (preferred) or templateId/kind, with optional field overrides.",
+        "Build a LINE Flex Message from condition_key (preferred) or templateId/kind, with optional field overrides. For nearby/ใกล้เคียง/7-11/โรงพยาบาล/แชร์พิกัด use condition_key=checkin_ask and fields.tag when known.",
       parameters: {
         type: "object",
         properties: {
@@ -237,7 +241,30 @@ function executeTool(
     if (typeof args.altText === "string" && args.altText.trim()) {
       merged.altText = args.altText.trim();
     }
-    const flex = buildFlex(kind, merged);
+
+    let flex: FlexMessage;
+    if (
+      resolvedKey === "checkin_ask" ||
+      conditionKey === "checkin_ask" ||
+      resolvedKey === "location_ask" ||
+      conditionKey === "nearby_ask"
+    ) {
+      const tag =
+        (merged.tag || "").trim() ||
+        mapIntentToLongdoTag(
+          String(args.intent || args.query || merged.body || "")
+        );
+      flex = buildLocationAskFlex({
+        liffId: getEnvLiffId(),
+        tag: tag || undefined,
+        title: merged.title || undefined,
+        body: merged.body || undefined,
+        buttonLabel: merged.buttonLabel || undefined,
+      });
+      if (merged.altText) flex.altText = merged.altText;
+    } else {
+      flex = buildFlex(kind, merged);
+    }
     state.flexMessage = flex;
     state.conditionKey = resolvedKey || undefined;
     return {

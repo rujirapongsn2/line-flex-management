@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { LineConfig } from "@/lib/types";
+import type { LineConfig, LocationActionConfig, LocationActionMode } from "@/lib/types";
+import { defaultLocationAction } from "@/lib/types";
 import type { Readiness } from "./readiness";
 
 type WebhookUser = {
@@ -160,7 +161,7 @@ export default function LineConnectPage({
               ) : null}
             </div>
             <div className="hint">
-              กดบันทึกจะซิงก์ขึ้นเซิร์ฟเวอร์ให้ webhook ใช้ตอบกลับ
+              เก็บในเบราว์เซอร์ · กดบันทึกจะซิงก์ขึ้นเซิร์ฟเวอร์ให้ webhook ใช้ตอบกลับ
             </div>
           </div>
         </div>
@@ -179,7 +180,7 @@ export default function LineConnectPage({
               placeholder="ทางเลือก — สำหรับตรวจลายเซ็น webhook"
             />
             <div className="hint mt-8">
-              หรือตั้ง LINE_CHANNEL_SECRET ใน env
+              ซิงก์ขึ้นเซิร์ฟเวอร์เมื่อกดบันทึก · หรือตั้ง LINE_CHANNEL_SECRET ใน env
             </div>
             <button
               type="button"
@@ -189,6 +190,479 @@ export default function LineConnectPage({
               บันทึก Secret
             </button>
           </div>
+        </div>
+
+
+        <div className="card" style={{ padding: "18px 20px" }}>
+          <div className="fw-600 mb-4">LIFF ID (แชร์พิกัดค้นหาใกล้เคียง)</div>
+          <div className="text-sm text-muted mb-12">
+            สร้าง LIFF App ใน LINE Developers · Endpoint URL =
+            https://line.rujirapong.us/liff/checkin · Size: Full
+            · ใส่ LIFF ID ที่นี่ หรือตั้ง <code>LIFF_ID</code> ใน .env (env มีลำดับสูงกว่า)
+          </div>
+
+                    <details
+            className="text-sm"
+            style={{
+              lineHeight: 1.6,
+              marginBottom: 14,
+              padding: "12px 14px",
+              background: "var(--accent-soft)",
+              borderRadius: 10,
+              border: "1px solid #B9D9EF",
+            }}
+          >
+            <summary
+              className="fw-600"
+              style={{
+                color: "var(--accent-dark)",
+                cursor: "pointer",
+                listStyle: "none",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                userSelect: "none",
+              }}
+            >
+              <span>Guideline สร้าง LIFF ID</span>
+              <span
+                className="text-xs text-muted"
+                aria-hidden="true"
+                style={{ fontWeight: 400 }}
+              >
+                แตะเพื่อเปิด/ปิด
+              </span>
+            </summary>
+            <div style={{ marginTop: 12 }}>
+<ol style={{ margin: 0, paddingLeft: 18, color: "var(--text)" }}>
+              <li style={{ marginBottom: 6 }}>
+                LINE Developers → Provider เดียวกับบอท → สร้างช่องทางใหม่ประเภท{" "}
+                <strong>LINE Login</strong> (ไม่ใช่ Messaging API)
+              </li>
+              <li style={{ marginBottom: 6 }}>
+                เข้าช่อง LINE Login → แท็บ <strong>LIFF</strong> → Add
+              </li>
+              <li style={{ marginBottom: 6 }}>
+                <strong>Size:</strong> Full
+              </li>
+              <li style={{ marginBottom: 6 }}>
+                <strong>Endpoint URL:</strong>{" "}
+                <code>https://line.rujirapong.us/liff/checkin</code>
+              </li>
+              <li style={{ marginBottom: 6 }}>
+                <strong>Scopes:</strong> ติ๊ก <code>profile</code> และ{" "}
+                <code>chat_message.write</code> (บังคับอย่างน้อย openid หรือ profile ·
+                chat_message.write จำเป็นเพื่อส่ง Flex ผลค้นหากลับแชท)
+              </li>
+              <li style={{ marginBottom: 6 }}>
+                <strong>Add friend option:</strong> On (Normal) — ถ้าลูกค้าเป็นเพื่อนบอทครบแล้วเลือก Off ได้
+              </li>
+              <li style={{ marginBottom: 6 }}>
+                Scan QR / Module mode: ปล่อย Off
+              </li>
+              <li>
+                คัดลอก <strong>LIFF ID</strong> มาวางด้านล่าง แล้วกดบันทึก (หรือใส่ใน .env แล้ว restart container)
+              </li>
+            </ol>
+            <div className="text-xs text-muted mt-10" style={{ lineHeight: 1.5 }}>
+              หน้าสาธารณะ: /liff/checkin · เทมเพลต checkin_ask / nearby_results · API /api/poi/search
+              · ถ้าเปิด LIFF จากแชทบอทแล้ว error ให้ตรวจว่า Endpoint เป็น HTTPS และ LIFF ID ตรงกับที่บันทึก
+            </div>
+            </div>
+          </details>
+
+          <div className="field" style={{ margin: 0 }}>
+            <input
+              className="input mono"
+              autoComplete="off"
+              value={draft.liffId || ""}
+              onChange={(e) =>
+                setDraft({ ...draft, liffId: e.target.value.trim() })
+              }
+              placeholder="เช่น 1234567890-abcdefgh"
+            />
+            <div className="hint mt-8">
+              หน้าสาธารณะ: /liff/checkin · เทมเพลต checkin_ask / nearby_results · API /api/location/action (poi/search ยังใช้ได้)
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm mt-8"
+              onClick={() => persist(draft)}
+            >
+              บันทึก LIFF ID
+            </button>
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: "18px 20px" }}>
+          <div className="fw-600 mb-4">Longdo Map API Key</div>
+          <div className="text-sm text-muted mb-12">
+            ใช้ค้นหา POI ใกล้เคียงฝั่งเซิร์ฟเวอร์ · แนะนำตั้ง{" "}
+            <code>LONGDO_API_KEY</code> ใน .env (env มีลำดับสูงกว่าค่าในฟอร์ม)
+          </div>
+          <div className="field" style={{ margin: 0 }}>
+            <input
+              className="input mono"
+              type="password"
+              autoComplete="off"
+              value={draft.longdoApiKey || ""}
+              onChange={(e) =>
+                setDraft({ ...draft, longdoApiKey: e.target.value.trim() })
+              }
+              placeholder="Longdo API Key"
+            />
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm mt-8"
+              onClick={() => persist(draft)}
+            >
+              บันทึก Longdo Key
+            </button>
+          </div>
+        </div>
+
+
+        <div className="card" style={{ padding: "18px 20px" }}>
+          <div className="fw-600 mb-4">Location Action (หลังได้ GPS จาก LIFF)</div>
+          <div className="text-sm text-muted mb-8">
+            หลัง LIFF ได้พิกัด ระบบจะรัน Action ตามโหมด แล้วตอบ LINE (LLM / Flex สำรอง)
+          </div>
+          <details
+            className="text-sm"
+            style={{
+              lineHeight: 1.6,
+              marginBottom: 14,
+              padding: "12px 14px",
+              background: "var(--accent-soft)",
+              borderRadius: 10,
+              border: "1px solid #B9D9EF",
+            }}
+          >
+            <summary
+              className="fw-600"
+              style={{
+                color: "var(--accent-dark)",
+                cursor: "pointer",
+                listStyle: "none",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                userSelect: "none",
+              }}
+            >
+              <span>Guideline · ตัวแปรที่ใช้ใน parameter</span>
+              <span
+                className="text-xs text-muted"
+                aria-hidden="true"
+                style={{ fontWeight: 400 }}
+              >
+                แตะเพื่อเปิด/ปิด
+              </span>
+            </summary>
+            <div style={{ marginTop: 12, color: "var(--text)" }}>
+              <div className="fw-600 mb-8">โหมด</div>
+              <ul style={{ margin: "0 0 12px", paddingLeft: 18 }}>
+                <li style={{ marginBottom: 6 }}>
+                  <code>longdo_poi</code> — ค้นหา Longdo ด้วยพิกัด (ค่าเริ่มต้น / PoC)
+                </li>
+                <li style={{ marginBottom: 6 }}>
+                  <code>http</code> — เรียก API ตาม urlTemplate / headers / bodyTemplate
+                  (แทนค่าตัวแปรฝั่งเซิร์ฟเวอร์)
+                </li>
+                <li style={{ marginBottom: 6 }}>
+                  <code>none</code> — ไม่เรียกภายนอก ส่งพิกัดให้ LLM ตอบอย่างเดียว
+                </li>
+              </ul>
+              <div className="fw-600 mb-8">ตัวแปรที่ใช้ใน URL · headers · body</div>
+              <ul style={{ margin: "0 0 12px", paddingLeft: 18 }}>
+                <li style={{ marginBottom: 6 }}>
+                  <code>{"{{lat}}"}</code> — ละติจูดจาก LIFF
+                </li>
+                <li style={{ marginBottom: 6 }}>
+                  <code>{"{{lon}}"}</code> — ลองจิจูดจาก LIFF
+                </li>
+                <li style={{ marginBottom: 6 }}>
+                  <code>{"{{tag}}"}</code> — หมวด/แท็กจากคำถามหรือการ์ด (เช่น{" "}
+                  <code>7-11</code>, <code>hospital</code>)
+                </li>
+                <li style={{ marginBottom: 6 }}>
+                  <code>{"{{userId}}"}</code> — LINE userId ของผู้ใช้
+                </li>
+                <li style={{ marginBottom: 6 }}>
+                  <code>{"{{query}}"}</code> — ข้อความ/intent เดิมที่มากับการขอพิกัด
+                </li>
+                <li style={{ marginBottom: 6 }}>
+                  <code>{"{{secret:ENV_NAME}}"}</code> — ดึงค่าจาก .env บนเซิร์ฟเวอร์
+                  (เช่น <code>{"{{secret:LONGDO_API_KEY}}"}</code>) · ไม่โชว์ใน LIFF /
+                  /api/liff/config
+                </li>
+              </ul>
+              <div className="fw-600 mb-8">ตัวอย่าง</div>
+              <div className="mono text-xs" style={{ lineHeight: 1.55, marginBottom: 8 }}>
+                GET{" "}
+                <code>
+                  {
+                    "https://api.example.com/near?lat={{lat}}&lon={{lon}}&tag={{tag}}"
+                  }
+                </code>
+              </div>
+              <div className="mono text-xs" style={{ lineHeight: 1.55, marginBottom: 12 }}>
+                POST body{" "}
+                <code>
+                  {'{"lat":{{lat}},"lon":{{lon}},"tag":"{{tag}}","userId":"{{userId}}"}'}
+                </code>
+              </div>
+              <div className="text-xs text-muted" style={{ lineHeight: 1.5 }}>
+                ผล API จะถูกส่งเข้า LLM เพื่อตอบ LINE · ถ้า LLM ล้มใช้ fallback Flex (
+                <code>nearby_results</code>) · โหมด http บล็อก localhost / private IP
+                (SSRF)
+              </div>
+            </div>
+          </details>
+          {(() => {
+            const loc: LocationActionConfig =
+              draft.locationAction || defaultLocationAction();
+            const setLoc = (next: LocationActionConfig) =>
+              setDraft({ ...draft, locationAction: next });
+            const mode = loc.mode || "longdo_poi";
+            return (
+              <div className="stack" style={{ gap: 12 }}>
+                <div className="field" style={{ margin: 0 }}>
+                  <label className="label">โหมด</label>
+                  <select
+                    className="input"
+                    value={mode}
+                    onChange={(e) =>
+                      setLoc({
+                        ...loc,
+                        mode: e.target.value as LocationActionMode,
+                      })
+                    }
+                  >
+                    <option value="longdo_poi">longdo_poi — ค้นหา Longdo (ค่าเริ่มต้น)</option>
+                    <option value="http">http — เรียก API ตาม URL template</option>
+                    <option value="none">none — ไม่เรียกภายนอก แค่พิกัด + LLM</option>
+                  </select>
+                </div>
+
+                {mode === "longdo_poi" ? (
+                  <div className="row gap-8" style={{ flexWrap: "wrap" }}>
+                    <div className="field" style={{ margin: 0, flex: 1, minWidth: 140 }}>
+                      <label className="label">defaultTags</label>
+                      <input
+                        className="input mono"
+                        value={loc.longdo?.defaultTags || ""}
+                        onChange={(e) =>
+                          setLoc({
+                            ...loc,
+                            longdo: {
+                              ...(loc.longdo || {}),
+                              defaultTags: e.target.value,
+                            },
+                          })
+                        }
+                        placeholder="hospital,7-11,…"
+                      />
+                    </div>
+                    <div className="field" style={{ margin: 0, width: 100 }}>
+                      <label className="label">limit</label>
+                      <input
+                        className="input mono"
+                        type="number"
+                        min={1}
+                        max={20}
+                        value={loc.longdo?.limit ?? 10}
+                        onChange={(e) =>
+                          setLoc({
+                            ...loc,
+                            longdo: {
+                              ...(loc.longdo || {}),
+                              limit: Number(e.target.value) || 10,
+                            },
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="field" style={{ margin: 0, width: 100 }}>
+                      <label className="label">span</label>
+                      <input
+                        className="input mono"
+                        value={loc.longdo?.span || "300m"}
+                        onChange={(e) =>
+                          setLoc({
+                            ...loc,
+                            longdo: {
+                              ...(loc.longdo || {}),
+                              span: e.target.value,
+                            },
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+                ) : null}
+
+                {mode === "http" ? (
+                  <div className="stack" style={{ gap: 10 }}>
+                    <div className="row gap-8">
+                      <div className="field" style={{ margin: 0, width: 120 }}>
+                        <label className="label">method</label>
+                        <select
+                          className="input"
+                          value={loc.http?.method || "GET"}
+                          onChange={(e) =>
+                            setLoc({
+                              ...loc,
+                              http: {
+                                ...(loc.http || {
+                                  method: "GET",
+                                  urlTemplate: "",
+                                }),
+                                method: e.target.value as
+                                  | "GET"
+                                  | "POST"
+                                  | "PUT"
+                                  | "PATCH",
+                              },
+                            })
+                          }
+                        >
+                          <option value="GET">GET</option>
+                          <option value="POST">POST</option>
+                          <option value="PUT">PUT</option>
+                          <option value="PATCH">PATCH</option>
+                        </select>
+                      </div>
+                      <div className="field" style={{ margin: 0, flex: 1 }}>
+                        <label className="label">urlTemplate</label>
+                        <input
+                          className="input mono"
+                          value={loc.http?.urlTemplate || ""}
+                          onChange={(e) =>
+                            setLoc({
+                              ...loc,
+                              http: {
+                                ...(loc.http || {
+                                  method: "GET",
+                                  urlTemplate: "",
+                                }),
+                                urlTemplate: e.target.value,
+                              },
+                            })
+                          }
+                          placeholder="https://api.example.com/near?lat={{lat}}&lon={{lon}}"
+                        />
+                      </div>
+                    </div>
+                    <div className="field" style={{ margin: 0 }}>
+                      <label className="label">headers (JSON)</label>
+                      <textarea
+                        className="input mono"
+                        rows={3}
+                        value={JSON.stringify(loc.http?.headers || {}, null, 2)}
+                        onChange={(e) => {
+                          try {
+                            const parsed = JSON.parse(e.target.value || "{}") as Record<
+                              string,
+                              string
+                            >;
+                            setLoc({
+                              ...loc,
+                              http: {
+                                ...(loc.http || {
+                                  method: "GET",
+                                  urlTemplate: "",
+                                }),
+                                headers: parsed,
+                              },
+                            });
+                          } catch {
+                            /* keep typing */
+                          }
+                        }}
+                        placeholder='{"Authorization":"Bearer {{secret:MY_API_TOKEN}}"}'
+                      />
+                    </div>
+                    <div className="field" style={{ margin: 0 }}>
+                      <label className="label">bodyTemplate</label>
+                      <textarea
+                        className="input mono"
+                        rows={3}
+                        value={loc.http?.bodyTemplate || ""}
+                        onChange={(e) =>
+                          setLoc({
+                            ...loc,
+                            http: {
+                              ...(loc.http || {
+                                method: "GET",
+                                urlTemplate: "",
+                              }),
+                              bodyTemplate: e.target.value,
+                            },
+                          })
+                        }
+                        placeholder='{"lat":{{lat}},"lon":{{lon}},"tag":"{{tag}}"}'
+                      />
+                    </div>
+                    <div className="hint">
+                      ใช้ตัวแปรจาก Guideline ด้านบน · SSRF บล็อก localhost/private IP
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="row gap-8" style={{ alignItems: "center" }}>
+                  <label
+                    className="row gap-8"
+                    style={{ cursor: "pointer", fontSize: 13 }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={loc.reply?.useLlm !== false}
+                      onChange={(e) =>
+                        setLoc({
+                          ...loc,
+                          reply: {
+                            ...(loc.reply || {
+                              useLlm: true,
+                              fallbackFlexKey: "nearby_results",
+                            }),
+                            useLlm: e.target.checked,
+                          },
+                        })
+                      }
+                    />
+                    ใช้ LLM ตอบบน LINE หลัง Action
+                  </label>
+                  <div className="field" style={{ margin: 0, flex: 1 }}>
+                    <label className="label">fallbackFlexKey</label>
+                    <input
+                      className="input mono"
+                      value={loc.reply?.fallbackFlexKey || "nearby_results"}
+                      onChange={(e) =>
+                        setLoc({
+                          ...loc,
+                          reply: {
+                            ...(loc.reply || { useLlm: true }),
+                            fallbackFlexKey: e.target.value,
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => persist({ ...draft, locationAction: loc })}
+                >
+                  บันทึก Location Action
+                </button>
+              </div>
+            );
+          })()}
         </div>
 
         <div className="card" style={{ padding: "18px 20px" }}>

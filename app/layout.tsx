@@ -3,10 +3,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "FMM by Softnix",
-  description: "คอนโซลผู้ดูแล Agent สำหรับ LINE Flex Message — FMM by Softnix",
-  icons: {
-    icon: "/favicon-softnix.png",
-  },
+  icons: { icon: "/favicon-softnix.png" },
+  description: "คอนโซลผู้ดูแล Agent สำหรับ LINE Flex Message",
 };
 
 export default function RootLayout({

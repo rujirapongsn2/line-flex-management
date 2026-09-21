@@ -60,6 +60,11 @@ function isPublicPath(pathname: string): boolean {
   if (pathname === "/api/auth/login") return true;
   if (pathname === "/api/auth/logout") return true;
   if (pathname === "/api/line/webhook") return true;
+  if (pathname === "/api/checkin") return true;
+  if (pathname === "/api/poi/search") return true;
+  if (pathname === "/api/location/action") return true;
+  if (pathname === "/api/liff/config") return true;
+  if (pathname === "/liff/checkin" || pathname.startsWith("/liff/")) return true;
   if (pathname.startsWith("/_next/")) return true;
   if (pathname === "/favicon.ico") return true;
   return false;

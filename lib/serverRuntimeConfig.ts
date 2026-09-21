@@ -6,7 +6,12 @@ import type {
   TemplateId,
   TemplateVariable,
 } from "./types";
+import { defaultLocationAction } from "./types";
 import { defaultAgent, defaultLine } from "./consoleStore";
+import {
+  parseLocationActionJson,
+  serializeLocationAction,
+} from "./locationAction";
 import { ensureDbReady } from "./db";
 
 export type RuntimeConfig = {
@@ -99,6 +104,11 @@ export async function readRuntimeConfig(): Promise<RuntimeConfig> {
             channelSecret: lineRow.channelSecret,
             webhookConfirmed: lineRow.webhookConfirmed,
             lastUserId: lineRow.lastUserId || "",
+            liffId: (lineRow as { liffId?: string }).liffId || "",
+            longdoApiKey: (lineRow as { longdoApiKey?: string }).longdoApiKey || "",
+            locationAction: parseLocationActionJson(
+              (lineRow as { locationAction?: string }).locationAction || ""
+            ),
           }
         : base.line,
       templates: templates.map(rowToTemplate),
@@ -157,12 +167,22 @@ export async function writeRuntimeConfig(
         channelSecret: nextLine.channelSecret,
         webhookConfirmed: nextLine.webhookConfirmed,
         lastUserId: nextLine.lastUserId || "",
+        liffId: nextLine.liffId || "",
+        longdoApiKey: nextLine.longdoApiKey || "",
+        locationAction: serializeLocationAction(
+          nextLine.locationAction || defaultLocationAction()
+        ),
       },
       update: {
         channelAccessToken: nextLine.channelAccessToken,
         channelSecret: nextLine.channelSecret,
         webhookConfirmed: nextLine.webhookConfirmed,
         lastUserId: nextLine.lastUserId || "",
+        liffId: nextLine.liffId || "",
+        longdoApiKey: nextLine.longdoApiKey || "",
+        locationAction: serializeLocationAction(
+          nextLine.locationAction || defaultLocationAction()
+        ),
       },
     });
   }
@@ -191,10 +211,15 @@ export async function writeRuntimeConfig(
     });
   }
 
+  // Always re-seed checkin_ask / nearby_results + patch nearby prompt (idempotent)
+  const { ensureNearbySeeds } = await import("./migrate");
+  await ensureNearbySeeds(prisma);
+
+  const refreshed = await readRuntimeConfig();
   return {
-    agent: nextAgent,
-    line: nextLine,
-    templates: nextTemplates,
+    agent: refreshed.agent,
+    line: refreshed.line,
+    templates: refreshed.templates,
   };
 }
 
@@ -203,6 +228,9 @@ export type RuntimeConfigStatus = {
   hasApiKey: boolean;
   hasToken: boolean;
   hasSecret: boolean;
+  hasLiffId: boolean;
+  hasLongdoKey: boolean;
+  locationActionMode: string;
   templateCount: number;
   model: string;
   agentName: string;
@@ -220,10 +248,23 @@ export function toRuntimeStatus(cfg: RuntimeConfig): RuntimeConfigStatus {
   const apiKey = (cfg.agent.apiKey || "").trim();
   const token = (cfg.line.channelAccessToken || "").trim();
   const secret = (cfg.line.channelSecret || "").trim();
+  const liffId = (
+    (process.env.LIFF_ID || "").trim() ||
+    (cfg.line.liffId || "").trim()
+  );
+  const longdoKey = (
+    (process.env.LONGDO_API_KEY || "").trim() ||
+    (cfg.line.longdoApiKey || "").trim()
+  );
+  const locMode =
+    (cfg.line.locationAction && cfg.line.locationAction.mode) || "longdo_poi";
   return {
     hasApiKey: Boolean(apiKey),
     hasToken: Boolean(token),
     hasSecret: Boolean(secret),
+    hasLiffId: Boolean(liffId),
+    hasLongdoKey: Boolean(longdoKey),
+    locationActionMode: locMode,
     templateCount: Array.isArray(cfg.templates) ? cfg.templates.length : 0,
     model: cfg.agent.model || "",
     agentName: cfg.agent.name || "",

@@ -39,6 +39,10 @@ model LineConfig {
   channelSecret      String  @default("")
   webhookConfirmed   Boolean @default(false)
   lastUserId         String  @default("")
+  liffId             String  @default("")
+  longdoApiKey       String  @default("")
+  /// JSON LocationActionConfig (mode longdo_poi|http|none)
+  locationAction     String  @default("")
 }
 
 model FlexTemplate {
@@ -60,4 +64,16 @@ model WebhookUser {
   userId      String   @id
   displayHint String   @default("")
   lastSeenAt  DateTime @updatedAt
+}
+
+model CheckIn {
+  id          String   @id @default(cuid())
+  userId      String
+  displayName String   @default("")
+  lat         Float
+  lng         Float
+  accuracy    Float?
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
 }

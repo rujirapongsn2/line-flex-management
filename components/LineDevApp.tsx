@@ -7,9 +7,7 @@ import {
   saveConsoleState,
 } from "@/lib/consoleStore";
 import {
-  fetchRuntimeConfig,
   fetchRuntimeStatus,
-  serverHasData,
   syncRuntimeConfig,
   type RuntimeSyncStatus,
 } from "@/lib/syncRuntime";
@@ -145,57 +143,35 @@ export default function LineDevApp() {
   );
 
   useEffect(() => {
+    const loaded = loadConsoleState();
+    setState(loaded);
     const { page: p, editId: id } = readPageFromUrl();
     setPage(p);
     setEditId(id);
+    setHydrated(true);
 
-    void (async () => {
-      try {
-        const meRes = await fetch("/api/auth/me");
-        if (meRes.status === 401) {
+    void fetch("/api/auth/me")
+      .then(async (res) => {
+        if (res.status === 401) {
           window.location.href = "/login";
           return;
         }
-        const me = (await meRes.json()) as { username?: string };
-        if (me.username) setAuthUsername(me.username);
-      } catch {
-        /* middleware should gate */
-      }
+        const data = (await res.json()) as { username?: string };
+        if (data.username) setAuthUsername(data.username);
+      })
+      .catch(() => {
+        /* ignore — middleware should gate */
+      });
 
-      const local = loadConsoleState();
-      const remote = await fetchRuntimeConfig();
-
-      if (remote.ok && serverHasData(remote.config)) {
-        // SQLite is source of truth across browsers
-        setState({
-          agent: remote.config!.agent,
-          line: remote.config!.line,
-          templates: remote.config!.templates || [],
-        });
-        setServerRuntime(remote);
-      } else if (
-        (local.agent.apiKey || "").trim() ||
-        (local.line.channelAccessToken || "").trim() ||
-        (local.templates || []).length > 0
-      ) {
-        // One-shot migrate: DB empty, browser cache has data
-        setState(local);
-        const pushed = await syncRuntimeConfig(local);
-        setServerRuntime(pushed);
-        if (pushed.ok && pushed.config) {
-          setState({
-            agent: pushed.config.agent,
-            line: pushed.config.line,
-            templates: pushed.config.templates || [],
-          });
-        }
-      } else {
-        setState(local);
-        setServerRuntime(remote.ok ? remote : { ok: false, error: remote.error });
-      }
-
-      setHydrated(true);
-    })();
+    // Auto-sync once on mount if local state already has keys
+    if (
+      (loaded.agent.apiKey || "").trim() ||
+      (loaded.line.channelAccessToken || "").trim()
+    ) {
+      void syncRuntimeConfig(loaded).then((r) => setServerRuntime(r));
+    } else {
+      void fetchRuntimeStatus().then((r) => setServerRuntime(r));
+    }
   }, []);
 
   useEffect(() => {

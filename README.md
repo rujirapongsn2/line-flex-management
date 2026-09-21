@@ -83,3 +83,20 @@ tar czf linedev-data-backup.tgz data/
 ---
 
 **หมายเหตุ:** อย่าใส่ API key / รหัสผ่านจริงใน image หรือ git · Webhook คงเป็นสาธารณะ · UI อื่นต้องล็อกอิน
+
+## 7) LIFF + Longdo nearby POI (P1)
+
+Flow: ผู้ใช้ถามสถานที่ใกล้เคียง → Agent ส่ง Flex `checkin_ask` (ปุ่มเปิด LIFF) → ผู้ใช้แชร์ GPS → `POST /api/poi/search` เรียก Longdo ฝั่งเซิร์ฟเวอร์ → ส่ง Flex รายการ POI
+
+| ตัวแปร | ความหมาย |
+|---|---|
+| `LIFF_ID` | LINE LIFF App ID |
+| `PUBLIC_BASE_URL` | ค่าเริ่มต้น `https://line.rujirapong.us` |
+| `LONGDO_API_KEY` | Longdo Map API key (ห้ามใส่ใน frontend) |
+| `LONGDO_DEFAULT_TAGS` | CSV สำรอง เช่น `hospital,7-11,condominium,department_store` |
+
+- LIFF Endpoint URL: `https://line.rujirapong.us/liff/checkin` (Size: Full)
+- Public APIs: `GET /api/liff/config`, `POST /api/poi/search`, `POST /api/checkin` (legacy location store)
+- Templates: `checkin_ask` (location CTA), `nearby_results` (ผล Longdo — สร้างจาก API)
+
+LINE Developers: Messaging API channel → LIFF → Add → Endpoint URL ตามด้านบน → คัดลอก LIFF ID ใส่ `.env` แล้ว `docker compose up -d --build`

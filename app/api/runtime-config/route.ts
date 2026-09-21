@@ -14,11 +14,6 @@ export async function GET(req: NextRequest) {
   const cfg = await readRuntimeConfig();
   return NextResponse.json({
     ok: true,
-    config: {
-      agent: cfg.agent,
-      line: cfg.line,
-      templates: cfg.templates,
-    },
     ...toRuntimeStatus(cfg),
   });
 }
@@ -52,11 +47,6 @@ export async function POST(req: NextRequest) {
     const saved = await writeRuntimeConfig(partial);
     return NextResponse.json({
       ok: true,
-      config: {
-        agent: saved.agent,
-        line: saved.line,
-        templates: saved.templates,
-      },
       ...toRuntimeStatus(saved),
     });
   } catch (err) {

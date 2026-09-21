@@ -48,12 +48,49 @@ export type AgentConfig = {
   enabled: boolean;
 };
 
+/** After LIFF GPS: Longdo POI | custom HTTP | none — then optional LLM LINE reply */
+export type LocationActionMode = "longdo_poi" | "http" | "none";
+
+export type LocationActionConfig = {
+  mode: LocationActionMode;
+  longdo?: { defaultTags?: string; limit?: number; span?: string };
+  http?: {
+    method: "GET" | "POST" | "PUT" | "PATCH";
+    urlTemplate: string;
+    headers?: Record<string, string>;
+    bodyTemplate?: string;
+    timeoutMs?: number;
+  };
+  reply?: { useLlm: boolean; fallbackFlexKey?: string };
+};
+
+export function defaultLocationAction(): LocationActionConfig {
+  return {
+    mode: "longdo_poi",
+    longdo: { defaultTags: "", limit: 10, span: "300m" },
+    http: {
+      method: "GET",
+      urlTemplate: "",
+      headers: {},
+      bodyTemplate: "",
+      timeoutMs: 8000,
+    },
+    reply: { useLlm: true, fallbackFlexKey: "nearby_results" },
+  };
+}
+
 export type LineConfig = {
   channelAccessToken: string;
   channelSecret: string;
   webhookConfirmed: boolean;
   /** Optional last-used destination user id for sandbox send */
   lastUserId?: string;
+  /** LINE LIFF App ID (optional if LIFF_ID env is set) */
+  liffId?: string;
+  /** Longdo Map API key (optional if LONGDO_API_KEY env is set) */
+  longdoApiKey?: string;
+  /** Location Action after LIFF GPS (JSON-backed on server) */
+  locationAction?: LocationActionConfig;
 };
 
 export type ConsoleState = {

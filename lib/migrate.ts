@@ -2,6 +2,11 @@ import { promises as fs } from "fs";
 import path from "path";
 import type { PrismaClient } from "@prisma/client";
 import type { ConsoleTemplate } from "./types";
+import {
+  checkinAskTemplateFields,
+  checkinResultTemplateFields,
+} from "./checkinFlex";
+import { getEnvLiffId } from "./liffConfig";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const AUTH_JSON = path.join(DATA_DIR, "auth.json");
@@ -263,12 +268,134 @@ async function importRuntime(prisma: PrismaClient): Promise<void> {
 /**
  * Idempotent: push schema is done by entrypoint; this imports JSON once when DB is empty.
  */
+
+const NEARBY_PROMPT_MARKER = "checkin_ask";
+
+const NEARBY_PROMPT_BLOCK = `เมื่อลูกค้าถามสถานที่ใกล้เคียง / ใกล้ฉัน / แถวนี้มี… / 7-11 / โรงพยาบาล / คอนโด / ห้าง หรือขอแชร์พิกัด/เช็คอิน → ต้องเรียกเงื่อนไข checkin_ask ทันที (ส่ง Flex การ์ดเปิด LIFF ให้แชร์ GPS พร้อม fields.tag ถ้าทราบ เช่น 7-11 — ห้ามใช้ location picker ของ LINE เป็นหลัก; ผลค้นหา Longdo จะส่งหลังได้พิกัดจาก LIFF)
+
+สำคัญมาก: ห้ามตอบข้อความธรรมดาว่า «ไม่มีข้อมูล» / «ไม่พบ» / «ไม่มีในระบบ» เมื่อยังไม่ได้พิกัด — ต้องส่ง checkin_ask ก่อนเสมอ`;
+
+/** Idempotent: ensure AgentConfig.prompt includes nearby → checkin_ask rules. */
+export async function patchAgentNearbyPrompt(
+  prisma: PrismaClient
+): Promise<void> {
+  const row = await prisma.agentConfig.findUnique({ where: { id: 1 } });
+  if (!row) {
+    const { defaultAgentPrompt, defaultAgent } = await import("./consoleStore");
+    const a = defaultAgent();
+    await prisma.agentConfig.create({
+      data: {
+        id: 1,
+        name: a.name,
+        prompt: defaultAgentPrompt(),
+        baseUrl: a.baseUrl,
+        model: a.model,
+        apiKey: "",
+        enabled: true,
+      },
+    });
+    console.info("[migrate] created AgentConfig with nearby prompt");
+    return;
+  }
+
+  const prompt = (row.prompt || "").trim();
+  if (prompt.includes(NEARBY_PROMPT_MARKER) && prompt.includes("ไม่มีข้อมูล")) {
+    return;
+  }
+
+  let next: string;
+  if (!prompt) {
+    const { defaultAgentPrompt } = await import("./consoleStore");
+    next = defaultAgentPrompt();
+  } else if (!prompt.includes(NEARBY_PROMPT_MARKER)) {
+    next = `${prompt}\n\n${NEARBY_PROMPT_BLOCK}`;
+  } else {
+    next =
+      prompt +
+      "\n\nสำคัญมาก: ห้ามตอบข้อความธรรมดาว่า «ไม่มีข้อมูล» / «ไม่พบ» / «ไม่มีในระบบ» เมื่อยังไม่ได้พิกัด — ต้องส่ง checkin_ask ก่อนเสมอ";
+  }
+
+  await prisma.agentConfig.update({
+    where: { id: 1 },
+    data: { prompt: next },
+  });
+  console.info("[migrate] patched AgentConfig.prompt with nearby/checkin_ask rules");
+}
+
+export async function seedCheckinTemplates(prisma: PrismaClient): Promise<void> {
+  const liffId = getEnvLiffId();
+  const askFields = checkinAskTemplateFields(liffId);
+  const resultFields = checkinResultTemplateFields();
+
+  const ask = {
+    id: "checkin_ask",
+    displayNameTh: "แชร์พิกัดค้นหาใกล้เคียง",
+    conditionKey: "checkin_ask",
+    modelDescription:
+      "เมื่อลูกค้าถามสถานที่ใกล้เคียง / ใกล้ฉัน / แถวนี้มี… / 7-11 / โรงพยาบาล หรือขอแชร์พิกัด — ส่งการ์ด CTA เปิด LIFF (ใส่ tag ใน fields ถ้าทราบ; ไม่ใช้ LINE location picker เป็นหลัก). ห้ามตอบ «ไม่มีข้อมูล» โดยไม่มีพิกัด",
+    triggerExamples: JSON.stringify([
+      "แถวนี้มีร้าน 7-11 ที่ไหนบ้าง",
+      "มีโรงพยาบาลใกล้ฉันไหม",
+      "ค้นหาคอนโดใกล้เคียง",
+      "แชร์พิกัด",
+      "เช็คอิน",
+    ]),
+    variables: JSON.stringify([]),
+    kind: "bubble-simple",
+    fields: JSON.stringify(askFields),
+    enabled: true,
+    sortOrder: 100,
+  };
+  const result = {
+    id: "nearby_results",
+    displayNameTh: "ผลค้นหาใกล้เคียง",
+    conditionKey: "nearby_results",
+    modelDescription:
+      "การ์ดรายการ POI จาก Longdo หลังได้พิกัด (สร้างจาก /api/poi/search)",
+    triggerExamples: JSON.stringify([]),
+    variables: JSON.stringify([
+      { name: "lat", example: "13.7563", required: true },
+      { name: "lng", example: "100.5018", required: true },
+      { name: "time", example: "21 ก.ย. 2569 11:00", required: false },
+    ]),
+    kind: "bubble-simple",
+    fields: JSON.stringify(resultFields),
+    enabled: true,
+    sortOrder: 101,
+  };
+
+  for (const row of [ask, result]) {
+    await prisma.flexTemplate.upsert({
+      where: { id: row.id },
+      create: row,
+      update: {
+        displayNameTh: row.displayNameTh,
+        conditionKey: row.conditionKey,
+        modelDescription: row.modelDescription,
+        triggerExamples: row.triggerExamples,
+        variables: row.variables,
+        kind: row.kind,
+        fields: row.fields,
+        enabled: row.enabled,
+        sortOrder: row.sortOrder,
+      },
+    });
+  }
+}
+
+/** Seed checkin templates + patch agent prompt (safe to call after console sync). */
+export async function ensureNearbySeeds(prisma: PrismaClient): Promise<void> {
+  await seedCheckinTemplates(prisma);
+  await patchAgentNearbyPrompt(prisma);
+}
+
 export async function ensureMigrated(prisma: PrismaClient): Promise<void> {
   await fs.mkdir(DATA_DIR, { recursive: true });
 
   await importSessionSecret(prisma);
   await importAuth(prisma);
   await importRuntime(prisma);
+  await ensureNearbySeeds(prisma);
 
   const flag = await prisma.appMeta.findUnique({ where: { key: MIGRATED_FLAG } });
   if (!flag) {

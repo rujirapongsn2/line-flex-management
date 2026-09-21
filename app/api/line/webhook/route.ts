@@ -5,6 +5,9 @@ import { sendLineMessages } from "@/lib/lineMessaging";
 import { getDefaultModel } from "@/lib/openrouter";
 import { readRuntimeConfig } from "@/lib/serverRuntimeConfig";
 import { recordWebhookUser } from "@/lib/webhookStore";
+import { detectNearbyIntent } from "@/lib/nearbyIntent";
+import { buildLocationAskFlex } from "@/lib/nearbyFlex";
+import { getEnvLiffId, resolveLiffId } from "@/lib/liffConfig";
 
 type LineEvent = {
   type?: string;
@@ -33,6 +36,33 @@ function verifySignature(
   } catch {
     return digest === signature;
   }
+}
+
+async function replyCheckinAsk(opts: {
+  lineToken: string;
+  replyToken: string;
+  tag: string;
+  liffId?: string;
+}): Promise<boolean> {
+  const flex = buildLocationAskFlex({
+    liffId: resolveLiffId(opts.liffId) || getEnvLiffId(),
+    tag: opts.tag || undefined,
+  });
+  const result = await sendLineMessages({
+    channelAccessToken: opts.lineToken,
+    sendMode: "reply",
+    replyToken: opts.replyToken,
+    messages: [flex],
+  });
+  if (!result.ok) {
+    console.error("[webhook] checkin_ask hard-route failed", result);
+    return false;
+  }
+  console.info(
+    "[webhook] hard-routed nearby intent → checkin_ask",
+    opts.tag ? `tag=${opts.tag}` : "tag=none"
+  );
+  return true;
 }
 
 async function handleTextMessage(event: LineEvent): Promise<void> {
@@ -64,28 +94,38 @@ async function handleTextMessage(event: LineEvent): Promise<void> {
   const systemExtra = (runtime.agent.prompt || "").trim() || undefined;
   const templates = Array.isArray(runtime.templates) ? runtime.templates : [];
 
+  if (!lineToken || !replyToken) {
+    console.warn("[webhook] missing LINE token or replyToken — skip reply");
+    return;
+  }
+
+  // P0: bypass LLM for nearby / check-in intents → always send LIFF checkin_ask
+  const nearby = detectNearbyIntent(text);
+  if (nearby.matched) {
+    await replyCheckinAsk({
+      lineToken,
+      replyToken,
+      tag: nearby.tag,
+      liffId: runtime.line.liffId,
+    });
+    return;
+  }
+
   if (!openRouterKey) {
     console.warn(
       "[webhook] OPENROUTER_API_KEY / runtime agent.apiKey missing — skip LLM"
     );
-    if (lineToken && replyToken) {
-      await sendLineMessages({
-        channelAccessToken: lineToken,
-        sendMode: "reply",
-        replyToken,
-        messages: [
-          {
-            type: "text",
-            text: "ยังไม่ได้ตั้งค่า API Key บนเซิร์ฟเวอร์ — เปิด Console แล้วกดบันทึก Agent เพื่อซิงก์",
-          },
-        ],
-      });
-    }
-    return;
-  }
-
-  if (!lineToken || !replyToken) {
-    console.warn("[webhook] missing LINE token or replyToken — skip reply");
+    await sendLineMessages({
+      channelAccessToken: lineToken,
+      sendMode: "reply",
+      replyToken,
+      messages: [
+        {
+          type: "text",
+          text: "ยังไม่ได้ตั้งค่า API Key บนเซิร์ฟเวอร์ — เปิด Console แล้วกดบันทึก Agent เพื่อซิงก์",
+        },
+      ],
+    });
     return;
   }
 
