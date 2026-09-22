@@ -1,15 +1,40 @@
-import type { ConsoleState } from "./types";
+import type {
+  ConsoleState,
+  ConsoleTemplate,
+  LocationActionConfig,
+} from "./types";
+
+export type RuntimeHydratePayload = {
+  agent: {
+    name: string;
+    prompt: string;
+    baseUrl: string;
+    model: string;
+    enabled: boolean;
+  };
+  line: {
+    webhookConfirmed: boolean;
+    lastUserId: string;
+    liffId: string;
+    locationAction?: LocationActionConfig;
+  };
+  templates: ConsoleTemplate[];
+};
 
 export type RuntimeSyncStatus = {
   ok: boolean;
   hasApiKey?: boolean;
   hasToken?: boolean;
   hasSecret?: boolean;
+  hasLiffId?: boolean;
+  hasLongdoKey?: boolean;
+  locationActionMode?: string;
   templateCount?: number;
   model?: string;
   agentName?: string;
   apiKeyLast4?: string | null;
   tokenLast4?: string | null;
+  hydrate?: RuntimeHydratePayload;
   error?: string;
 };
 
@@ -18,12 +43,21 @@ export async function syncRuntimeConfig(
   state: ConsoleState
 ): Promise<RuntimeSyncStatus> {
   try {
+    const agent: Record<string, unknown> = { ...state.agent };
+    const line: Record<string, unknown> = { ...state.line };
+    // Never send empty secrets — avoids wiping non-empty SQLite values.
+    if (!(state.agent.apiKey || "").trim()) delete agent.apiKey;
+    if (!(state.line.channelAccessToken || "").trim())
+      delete line.channelAccessToken;
+    if (!(state.line.channelSecret || "").trim()) delete line.channelSecret;
+    if (!(state.line.longdoApiKey || "").trim()) delete line.longdoApiKey;
+
     const res = await fetch("/api/runtime-config", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        agent: state.agent,
-        line: state.line,
+        agent,
+        line,
         templates: state.templates,
       }),
     });
@@ -57,4 +91,11 @@ export async function fetchRuntimeStatus(): Promise<RuntimeSyncStatus> {
       error: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+/** Convenience: GET status and return hydrate payload (or null). */
+export async function fetchRuntimeHydrate(): Promise<RuntimeHydratePayload | null> {
+  const status = await fetchRuntimeStatus();
+  if (!status.ok || !status.hydrate) return null;
+  return status.hydrate;
 }

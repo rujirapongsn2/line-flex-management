@@ -15,7 +15,7 @@ type Props = {
   template: ConsoleTemplate;
   agentName: string;
   onBack: () => void;
-  onSave: (tpl: ConsoleTemplate) => void;
+  onSave: (tpl: ConsoleTemplate) => void | Promise<unknown>;
   onInsertHint: (conditionKey: string, displayNameTh: string) => void;
 };
 
@@ -28,6 +28,7 @@ export default function FlexEditPage({
 }: Props) {
   const [draft, setDraft] = useState<ConsoleTemplate>(template);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [showJson, setShowJson] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [importMsg, setImportMsg] = useState<string | null>(null);
@@ -206,26 +207,44 @@ export default function FlexEditPage({
     setSaved(false);
   }
 
-  function handleSave() {
-    if (editorMode === "simulator") {
-      const result = parseFlexSimulatorJson(pasteText);
-      if (!result.ok) {
-        setSaveError(
-          result.error ||
-            "JSON จาก Flex Simulator ไม่ถูกต้อง — แก้ก่อนบันทึก"
-        );
-        setSaved(false);
+  async function handleSave() {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      if (editorMode === "simulator") {
+        const result = parseFlexSimulatorJson(pasteText);
+        if (!result.ok) {
+          setSaveError(
+            result.error ||
+              "JSON จาก Flex Simulator ไม่ถูกต้อง — แก้ก่อนบันทึก"
+          );
+          setSaved(false);
+          return;
+        }
+        const pretty = prettyContents(result.contents);
+        const next: ConsoleTemplate = {
+          ...draft,
+          kind: "raw-json",
+          fields: {
+            ...draft.fields,
+            rawContents: pretty,
+            ...(result.altText ? { altText: result.altText } : {}),
+          },
+          triggerExamples: examplesText
+            .split("\n")
+            .map((s) => s.trim())
+            .filter(Boolean),
+          conditionKey: draft.conditionKey.trim().replace(/\s+/g, "_"),
+        };
+        setDraft(next);
+        setPasteText(pretty);
+        await onSave(next);
+        setSaved(true);
         return;
       }
-      const pretty = prettyContents(result.contents);
+
       const next: ConsoleTemplate = {
         ...draft,
-        kind: "raw-json",
-        fields: {
-          ...draft.fields,
-          rawContents: pretty,
-          ...(result.altText ? { altText: result.altText } : {}),
-        },
         triggerExamples: examplesText
           .split("\n")
           .map((s) => s.trim())
@@ -233,25 +252,14 @@ export default function FlexEditPage({
         conditionKey: draft.conditionKey.trim().replace(/\s+/g, "_"),
       };
       setDraft(next);
-      setPasteText(pretty);
-      setSaveError(null);
-      onSave(next);
+      await onSave(next);
       setSaved(true);
-      return;
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaved(false);
+    } finally {
+      setSaving(false);
     }
-
-    const next: ConsoleTemplate = {
-      ...draft,
-      triggerExamples: examplesText
-        .split("\n")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      conditionKey: draft.conditionKey.trim().replace(/\s+/g, "_"),
-    };
-    setDraft(next);
-    setSaveError(null);
-    onSave(next);
-    setSaved(true);
   }
 
   const previewFlex = useMemo(() => {
@@ -304,11 +312,11 @@ export default function FlexEditPage({
           <button
             type="button"
             className="btn btn-primary btn-sm"
-            onClick={handleSave}
-            disabled={saved}
+            onClick={() => void handleSave()}
+            disabled={saving || saved}
             style={saved ? { opacity: 0.7 } : undefined}
           >
-            {saved ? "✓ บันทึกแล้ว" : "บันทึกเทมเพลต"}
+            {saving ? "กำลังบันทึก…" : saved ? "✓ บันทึกแล้ว" : "บันทึกเทมเพลต"}
           </button>
         </div>
       </div>

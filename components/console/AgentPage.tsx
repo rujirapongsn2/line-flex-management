@@ -13,7 +13,7 @@ type Props = {
   templates: ConsoleTemplate[];
   pendingHint?: string | null;
   onClearPendingHint?: () => void;
-  onSave: (agent: AgentConfig) => void;
+  onSave: (agent: AgentConfig) => void | Promise<unknown>;
   onProfile?: () => void;
   menuOpen?: boolean;
   onMenuToggle?: () => void;
@@ -31,6 +31,8 @@ export default function AgentPage({
 }: Props) {
   const [draft, setDraft] = useState<AgentConfig>(agent);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     setDraft(agent);
@@ -72,10 +74,19 @@ export default function AgentPage({
     }));
   }
 
-  function handleSave() {
-    onSave(draft);
-    setSavedFlash(true);
-    window.setTimeout(() => setSavedFlash(false), 2000);
+  async function handleSave() {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await onSave(draft);
+      setSavedFlash(true);
+      window.setTimeout(() => setSavedFlash(false), 2000);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err));
+      setSavedFlash(false);
+    } finally {
+      setSaving(false);
+    }
   }
 
   function resetPrompt() {
@@ -111,11 +122,19 @@ export default function AgentPage({
           </div>
         </div>
         <div className="topbar-right">
+          {saveError ? (
+            <span className="tag tag-red">{saveError}</span>
+          ) : null}
           {savedFlash ? (
             <span className="tag tag-green">บันทึกแล้ว</span>
           ) : null}
-          <button type="button" className="btn btn-primary btn-sm" onClick={handleSave}>
-            บันทึกทั้งหมด
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => void handleSave()}
+            disabled={saving}
+          >
+            {saving ? "กำลังบันทึก…" : "บันทึกทั้งหมด"}
           </button>
           <UserMenu onProfile={() => onProfile?.()} />
         </div>

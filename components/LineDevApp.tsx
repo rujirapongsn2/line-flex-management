@@ -61,7 +61,7 @@ function writeUrl(page: PageId, editId?: string | null) {
 }
 
 const TITLES: Record<PageId, { h1: string; crumb: string }> = {
-  overview: { h1: "ภาพรวม", crumb: "FMM by Softnix · สถานะความพร้อม" },
+  overview: { h1: "ภาพรวม", crumb: "Softnix LineDev Console · สถานะความพร้อม" },
   agent: { h1: "Agent", crumb: "ตั้งค่าบุคลิก Prompt และโมเดล" },
   flex: { h1: "เทมเพลต Flex", crumb: "จัดการการ์ดตามเงื่อนไขใน Prompt" },
   "flex-edit": { h1: "เทมเพลต Flex — แก้ไข", crumb: "ฟอร์ม + พรีวิว LINE" },
@@ -163,15 +163,66 @@ export default function LineDevApp() {
         /* ignore — middleware should gate */
       });
 
-    // Auto-sync once on mount if local state already has keys
-    if (
-      (loaded.agent.apiKey || "").trim() ||
-      (loaded.line.channelAccessToken || "").trim()
-    ) {
-      void syncRuntimeConfig(loaded).then((r) => setServerRuntime(r));
-    } else {
-      void fetchRuntimeStatus().then((r) => setServerRuntime(r));
-    }
+    // Hydrate from SQLite (source of truth), then optionally push local-only secrets.
+    void (async () => {
+      const status = await fetchRuntimeStatus();
+      setServerRuntime(status);
+      let merged = loaded;
+      if (status.ok && status.hydrate) {
+        const h = status.hydrate;
+        merged = {
+          ...loaded,
+          templates:
+            h.templates && h.templates.length > 0
+              ? h.templates
+              : loaded.templates,
+          agent: {
+            ...loaded.agent,
+            name: h.agent.name,
+            prompt: h.agent.prompt,
+            baseUrl: h.agent.baseUrl,
+            model: h.agent.model,
+            enabled: h.agent.enabled,
+            // Keep non-empty local apiKey (hydrate never includes it)
+            apiKey: (loaded.agent.apiKey || "").trim()
+              ? loaded.agent.apiKey
+              : loaded.agent.apiKey,
+          },
+          line: {
+            ...loaded.line,
+            webhookConfirmed: h.line.webhookConfirmed,
+            lastUserId: h.line.lastUserId,
+            liffId: h.line.liffId,
+            locationAction:
+              h.line.locationAction || loaded.line.locationAction,
+            // Keep non-empty local secrets (hydrate never includes them)
+            channelAccessToken: (loaded.line.channelAccessToken || "").trim()
+              ? loaded.line.channelAccessToken
+              : loaded.line.channelAccessToken,
+            channelSecret: (loaded.line.channelSecret || "").trim()
+              ? loaded.line.channelSecret
+              : loaded.line.channelSecret,
+            longdoApiKey: (loaded.line.longdoApiKey || "").trim()
+              ? loaded.line.longdoApiKey
+              : loaded.line.longdoApiKey,
+          },
+        };
+        setState(merged);
+      }
+      if (!status.ok) return;
+      const localToken = (merged.line.channelAccessToken || "").trim();
+      const localSecret = (merged.line.channelSecret || "").trim();
+      const localApiKey = (merged.agent.apiKey || "").trim();
+      const localLongdo = (merged.line.longdoApiKey || "").trim();
+      const needsPush =
+        (Boolean(localToken) && !status.hasToken) ||
+        (Boolean(localSecret) && !status.hasSecret) ||
+        (Boolean(localApiKey) && !status.hasApiKey) ||
+        (Boolean(localLongdo) && status.hasLongdoKey === false);
+      if (!needsPush) return;
+      const r = await syncRuntimeConfig(merged);
+      setServerRuntime(r);
+    })();
   }, []);
 
   useEffect(() => {
@@ -221,39 +272,49 @@ export default function LineDevApp() {
     setState((s) => ({ ...s, ...patch }));
   }
 
-  function saveAgent(agent: AgentConfig) {
+  async function saveAgent(agent: AgentConfig) {
     const next = { ...state, agent };
     setState(next);
-    void pushRuntime(next);
+    const r = await pushRuntime(next);
+    if (!r.ok) throw new Error(r.error || "บันทึก Agent ไม่สำเร็จ");
+    return r;
   }
 
-  function saveLine(line: LineConfig) {
+  async function saveLine(line: LineConfig) {
     const next = { ...state, line };
     setState(next);
-    void pushRuntime(next);
+    const r = await pushRuntime(next);
+    if (!r.ok) throw new Error(r.error || "บันทึก LINE ไม่สำเร็จ");
+    return r;
   }
 
-  function saveTemplate(tpl: ConsoleTemplate) {
+  async function saveTemplate(tpl: ConsoleTemplate) {
+    let next: ConsoleState | null = null;
     setState((s) => {
       const idx = s.templates.findIndex((t) => t.id === tpl.id);
       const templates =
         idx >= 0
           ? s.templates.map((t) => (t.id === tpl.id ? tpl : t))
           : [...s.templates, tpl];
-      const next = { ...s, templates };
-      void pushRuntime(next);
+      next = { ...s, templates };
       return next;
     });
+    const r = await pushRuntime(next!);
+    if (!r.ok) throw new Error(r.error || "บันทึกเทมเพลตไม่สำเร็จ");
+    return r;
   }
 
-  function createTemplate() {
+  async function createTemplate() {
     const tpl = createEmptyTemplate();
+    let next: ConsoleState | null = null;
     setState((s) => {
-      const next = { ...s, templates: [...s.templates, tpl] };
-      void pushRuntime(next);
+      next = { ...s, templates: [...s.templates, tpl] };
       return next;
     });
+    const r = await pushRuntime(next!);
+    if (!r.ok) throw new Error(r.error || "สร้างเทมเพลตไม่สำเร็จ");
     navigate("flex-edit", tpl.id);
+    return r;
   }
 
   function onInsertHintFromFlex(conditionKey: string, displayNameTh: string) {
@@ -266,7 +327,7 @@ export default function LineDevApp() {
     return (
       <div className="app-shell">
         <div className="content" style={{ padding: 40 }}>
-          กำลังโหลด FMM by Softnix…
+          กำลังโหลด Softnix LineDev Console…
         </div>
       </div>
     );
@@ -338,16 +399,22 @@ export default function LineDevApp() {
                 onCreate={createTemplate}
                 onEdit={(id) => navigate("flex-edit", id)}
                 onToggle={(id, enabled) => {
-                  setState((s) => {
-                    const next = {
-                      ...s,
-                      templates: s.templates.map((t) =>
-                        t.id === id ? { ...t, enabled } : t
-                      ),
-                    };
-                    void pushRuntime(next);
-                    return next;
-                  });
+                  void (async () => {
+                    let next: ConsoleState | null = null;
+                    setState((s) => {
+                      next = {
+                        ...s,
+                        templates: s.templates.map((t) =>
+                          t.id === id ? { ...t, enabled } : t
+                        ),
+                      };
+                      return next;
+                    });
+                    const r = await pushRuntime(next!);
+                    if (!r.ok) {
+                      console.error("[flex-toggle]", r.error);
+                    }
+                  })();
                 }}
               />
             )}

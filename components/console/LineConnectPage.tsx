@@ -14,7 +14,7 @@ type WebhookUser = {
 type Props = {
   line: LineConfig;
   readiness: Readiness;
-  onSave: (line: LineConfig) => void;
+  onSave: (line: LineConfig) => void | Promise<unknown>;
   needsServerSync?: boolean;
   serverRuntime?: { ok?: boolean; hasToken?: boolean; hasApiKey?: boolean } | null;
 };
@@ -46,6 +46,11 @@ export default function LineConnectPage({
   const [webhookUrl, setWebhookUrl] = useState("/api/line/webhook");
   const [copied, setCopied] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [savedSection, setSavedSection] = useState<
+    'token' | 'secret' | 'liff' | 'longdo' | 'location' | 'webhook' | null
+  >(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     setDraft(line);
@@ -73,12 +78,30 @@ export default function LineConnectPage({
     }
   }
 
-  function persist(next: LineConfig) {
+  async function persist(
+    next: LineConfig,
+    section: 'token' | 'secret' | 'liff' | 'longdo' | 'location' | 'webhook'
+  ) {
     setDraft(next);
-    onSave(next);
-    setSavedFlash(true);
-    window.setTimeout(() => setSavedFlash(false), 1500);
+    setSaving(true);
+    setSaveError(null);
+    setSavedFlash(false);
+    setSavedSection(null);
+    try {
+      await onSave(next);
+      setSavedSection(section);
+      setSavedFlash(true);
+      window.setTimeout(() => {
+        setSavedFlash(false);
+        setSavedSection(null);
+      }, 2000);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
   }
+
 
   async function copyUrl() {
     try {
@@ -145,7 +168,8 @@ export default function LineConnectPage({
               <button
                 type="button"
                 className="btn btn-primary"
-                onClick={() => persist(draft)}
+                disabled={saving}
+                onClick={() => void persist(draft, "token")}
               >
                 บันทึก
               </button>
@@ -156,8 +180,13 @@ export default function LineConnectPage({
               ) : (
                 <span className="badge warn dot">ยังไม่มีโทเคน</span>
               )}
-              {savedFlash ? (
+              {savedFlash && savedSection === "token" ? (
                 <span className="text-xs text-muted">บันทึกแล้ว</span>
+              ) : null}
+              {saveError ? (
+                <span className="text-xs" style={{ color: "#B91C1C" }}>
+                  {saveError}
+                </span>
               ) : null}
             </div>
             <div className="hint">
@@ -185,10 +214,16 @@ export default function LineConnectPage({
             <button
               type="button"
               className="btn btn-secondary btn-sm mt-8"
-              onClick={() => persist(draft)}
+              disabled={saving}
+              onClick={() => void persist(draft, "secret")}
             >
               บันทึก Secret
             </button>
+            {savedFlash && savedSection === "secret" ? (
+              <span className="text-xs text-muted" style={{ marginLeft: 8 }}>
+                บันทึกแล้ว
+              </span>
+            ) : null}
           </div>
         </div>
 
@@ -200,78 +235,6 @@ export default function LineConnectPage({
             https://line.rujirapong.us/liff/checkin · Size: Full
             · ใส่ LIFF ID ที่นี่ หรือตั้ง <code>LIFF_ID</code> ใน .env (env มีลำดับสูงกว่า)
           </div>
-
-                    <details
-            className="text-sm"
-            style={{
-              lineHeight: 1.6,
-              marginBottom: 14,
-              padding: "12px 14px",
-              background: "var(--accent-soft)",
-              borderRadius: 10,
-              border: "1px solid #B9D9EF",
-            }}
-          >
-            <summary
-              className="fw-600"
-              style={{
-                color: "var(--accent-dark)",
-                cursor: "pointer",
-                listStyle: "none",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 8,
-                userSelect: "none",
-              }}
-            >
-              <span>Guideline สร้าง LIFF ID</span>
-              <span
-                className="text-xs text-muted"
-                aria-hidden="true"
-                style={{ fontWeight: 400 }}
-              >
-                แตะเพื่อเปิด/ปิด
-              </span>
-            </summary>
-            <div style={{ marginTop: 12 }}>
-<ol style={{ margin: 0, paddingLeft: 18, color: "var(--text)" }}>
-              <li style={{ marginBottom: 6 }}>
-                LINE Developers → Provider เดียวกับบอท → สร้างช่องทางใหม่ประเภท{" "}
-                <strong>LINE Login</strong> (ไม่ใช่ Messaging API)
-              </li>
-              <li style={{ marginBottom: 6 }}>
-                เข้าช่อง LINE Login → แท็บ <strong>LIFF</strong> → Add
-              </li>
-              <li style={{ marginBottom: 6 }}>
-                <strong>Size:</strong> Full
-              </li>
-              <li style={{ marginBottom: 6 }}>
-                <strong>Endpoint URL:</strong>{" "}
-                <code>https://line.rujirapong.us/liff/checkin</code>
-              </li>
-              <li style={{ marginBottom: 6 }}>
-                <strong>Scopes:</strong> ติ๊ก <code>profile</code> และ{" "}
-                <code>chat_message.write</code> (บังคับอย่างน้อย openid หรือ profile ·
-                chat_message.write จำเป็นเพื่อส่ง Flex ผลค้นหากลับแชท)
-              </li>
-              <li style={{ marginBottom: 6 }}>
-                <strong>Add friend option:</strong> On (Normal) — ถ้าลูกค้าเป็นเพื่อนบอทครบแล้วเลือก Off ได้
-              </li>
-              <li style={{ marginBottom: 6 }}>
-                Scan QR / Module mode: ปล่อย Off
-              </li>
-              <li>
-                คัดลอก <strong>LIFF ID</strong> มาวางด้านล่าง แล้วกดบันทึก (หรือใส่ใน .env แล้ว restart container)
-              </li>
-            </ol>
-            <div className="text-xs text-muted mt-10" style={{ lineHeight: 1.5 }}>
-              หน้าสาธารณะ: /liff/checkin · เทมเพลต checkin_ask / nearby_results · API /api/poi/search
-              · ถ้าเปิด LIFF จากแชทบอทแล้ว error ให้ตรวจว่า Endpoint เป็น HTTPS และ LIFF ID ตรงกับที่บันทึก
-            </div>
-            </div>
-          </details>
-
           <div className="field" style={{ margin: 0 }}>
             <input
               className="input mono"
@@ -288,10 +251,16 @@ export default function LineConnectPage({
             <button
               type="button"
               className="btn btn-secondary btn-sm mt-8"
-              onClick={() => persist(draft)}
+              disabled={saving}
+              onClick={() => void persist(draft, "liff")}
             >
               บันทึก LIFF ID
             </button>
+            {savedFlash && savedSection === "liff" ? (
+              <span className="text-xs text-muted" style={{ marginLeft: 8 }}>
+                บันทึกแล้ว
+              </span>
+            ) : null}
           </div>
         </div>
 
@@ -315,112 +284,28 @@ export default function LineConnectPage({
             <button
               type="button"
               className="btn btn-secondary btn-sm mt-8"
-              onClick={() => persist(draft)}
+              disabled={saving}
+              onClick={() => void persist(draft, "longdo")}
             >
               บันทึก Longdo Key
             </button>
+            {savedFlash && savedSection === "longdo" ? (
+              <span className="text-xs text-muted" style={{ marginLeft: 8 }}>
+                บันทึกแล้ว
+              </span>
+            ) : null}
           </div>
         </div>
 
 
         <div className="card" style={{ padding: "18px 20px" }}>
           <div className="fw-600 mb-4">Location Action (หลังได้ GPS จาก LIFF)</div>
-          <div className="text-sm text-muted mb-8">
-            หลัง LIFF ได้พิกัด ระบบจะรัน Action ตามโหมด แล้วตอบ LINE (LLM / Flex สำรอง)
+          <div className="text-sm text-muted mb-12">
+            เลือกโหมด: Longdo POI (ค่าเริ่มต้น) · HTTP API ภายนอก · หรือ none แล้วให้ LLM
+            ตอบบน LINE · Secrets ใส่ใน .env แล้วอ้าง{" "}
+            <code>{"{{secret:ENV_NAME}}"}</code> ใน URL/headers · ไม่ส่งคีย์ออก
+            /api/liff/config
           </div>
-          <details
-            className="text-sm"
-            style={{
-              lineHeight: 1.6,
-              marginBottom: 14,
-              padding: "12px 14px",
-              background: "var(--accent-soft)",
-              borderRadius: 10,
-              border: "1px solid #B9D9EF",
-            }}
-          >
-            <summary
-              className="fw-600"
-              style={{
-                color: "var(--accent-dark)",
-                cursor: "pointer",
-                listStyle: "none",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 8,
-                userSelect: "none",
-              }}
-            >
-              <span>Guideline · ตัวแปรที่ใช้ใน parameter</span>
-              <span
-                className="text-xs text-muted"
-                aria-hidden="true"
-                style={{ fontWeight: 400 }}
-              >
-                แตะเพื่อเปิด/ปิด
-              </span>
-            </summary>
-            <div style={{ marginTop: 12, color: "var(--text)" }}>
-              <div className="fw-600 mb-8">โหมด</div>
-              <ul style={{ margin: "0 0 12px", paddingLeft: 18 }}>
-                <li style={{ marginBottom: 6 }}>
-                  <code>longdo_poi</code> — ค้นหา Longdo ด้วยพิกัด (ค่าเริ่มต้น / PoC)
-                </li>
-                <li style={{ marginBottom: 6 }}>
-                  <code>http</code> — เรียก API ตาม urlTemplate / headers / bodyTemplate
-                  (แทนค่าตัวแปรฝั่งเซิร์ฟเวอร์)
-                </li>
-                <li style={{ marginBottom: 6 }}>
-                  <code>none</code> — ไม่เรียกภายนอก ส่งพิกัดให้ LLM ตอบอย่างเดียว
-                </li>
-              </ul>
-              <div className="fw-600 mb-8">ตัวแปรที่ใช้ใน URL · headers · body</div>
-              <ul style={{ margin: "0 0 12px", paddingLeft: 18 }}>
-                <li style={{ marginBottom: 6 }}>
-                  <code>{"{{lat}}"}</code> — ละติจูดจาก LIFF
-                </li>
-                <li style={{ marginBottom: 6 }}>
-                  <code>{"{{lon}}"}</code> — ลองจิจูดจาก LIFF
-                </li>
-                <li style={{ marginBottom: 6 }}>
-                  <code>{"{{tag}}"}</code> — หมวด/แท็กจากคำถามหรือการ์ด (เช่น{" "}
-                  <code>7-11</code>, <code>hospital</code>)
-                </li>
-                <li style={{ marginBottom: 6 }}>
-                  <code>{"{{userId}}"}</code> — LINE userId ของผู้ใช้
-                </li>
-                <li style={{ marginBottom: 6 }}>
-                  <code>{"{{query}}"}</code> — ข้อความ/intent เดิมที่มากับการขอพิกัด
-                </li>
-                <li style={{ marginBottom: 6 }}>
-                  <code>{"{{secret:ENV_NAME}}"}</code> — ดึงค่าจาก .env บนเซิร์ฟเวอร์
-                  (เช่น <code>{"{{secret:LONGDO_API_KEY}}"}</code>) · ไม่โชว์ใน LIFF /
-                  /api/liff/config
-                </li>
-              </ul>
-              <div className="fw-600 mb-8">ตัวอย่าง</div>
-              <div className="mono text-xs" style={{ lineHeight: 1.55, marginBottom: 8 }}>
-                GET{" "}
-                <code>
-                  {
-                    "https://api.example.com/near?lat={{lat}}&lon={{lon}}&tag={{tag}}"
-                  }
-                </code>
-              </div>
-              <div className="mono text-xs" style={{ lineHeight: 1.55, marginBottom: 12 }}>
-                POST body{" "}
-                <code>
-                  {'{"lat":{{lat}},"lon":{{lon}},"tag":"{{tag}}","userId":"{{userId}}"}'}
-                </code>
-              </div>
-              <div className="text-xs text-muted" style={{ lineHeight: 1.5 }}>
-                ผล API จะถูกส่งเข้า LLM เพื่อตอบ LINE · ถ้า LLM ล้มใช้ fallback Flex (
-                <code>nearby_results</code>) · โหมด http บล็อก localhost / private IP
-                (SSRF)
-              </div>
-            </div>
-          </details>
           {(() => {
             const loc: LocationActionConfig =
               draft.locationAction || defaultLocationAction();
@@ -607,7 +492,8 @@ export default function LineConnectPage({
                       />
                     </div>
                     <div className="hint">
-                      ใช้ตัวแปรจาก Guideline ด้านบน · SSRF บล็อก localhost/private IP
+                      Placeholders: {"{{lat}}"} {"{{lon}}"} {"{{tag}}"}{" "}
+                      {"{{userId}}"} {"{{query}}"} · SSRF บล็อก localhost/private IP
                     </div>
                   </div>
                 ) : null}
@@ -656,10 +542,18 @@ export default function LineConnectPage({
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
-                  onClick={() => persist({ ...draft, locationAction: loc })}
+                  disabled={saving}
+                  onClick={() =>
+                    void persist({ ...draft, locationAction: loc }, "location")
+                  }
                 >
                   บันทึก Location Action
                 </button>
+                {savedFlash && savedSection === "location" ? (
+                  <span className="text-xs text-muted" style={{ marginLeft: 8 }}>
+                    บันทึกแล้ว
+                  </span>
+                ) : null}
               </div>
             );
           })()}
@@ -694,10 +588,10 @@ export default function LineConnectPage({
             <button
               type="button"
               className="btn btn-outline-accent"
+              disabled={saving || draft.webhookConfirmed}
               onClick={() =>
-                persist({ ...draft, webhookConfirmed: true })
+                void persist({ ...draft, webhookConfirmed: true }, "webhook")
               }
-              disabled={draft.webhookConfirmed}
             >
               ฉันลงทะเบียน Webhook แล้ว
             </button>
@@ -706,12 +600,18 @@ export default function LineConnectPage({
                 type="button"
                 className="btn btn-ghost btn-sm"
                 style={{ marginLeft: 8 }}
+                disabled={saving}
                 onClick={() =>
-                  persist({ ...draft, webhookConfirmed: false })
+                  void persist({ ...draft, webhookConfirmed: false }, "webhook")
                 }
               >
                 ยกเลิกการยืนยัน
               </button>
+            ) : null}
+            {savedFlash && savedSection === "webhook" ? (
+              <span className="text-xs text-muted" style={{ marginLeft: 8 }}>
+                บันทึกแล้ว
+              </span>
             ) : null}
           </div>
         </div>

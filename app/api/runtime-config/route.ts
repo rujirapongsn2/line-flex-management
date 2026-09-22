@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   parseRuntimeBody,
   readRuntimeConfig,
+  toHydratePayload,
   toRuntimeStatus,
   writeRuntimeConfig,
 } from "@/lib/serverRuntimeConfig";
@@ -15,6 +16,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     ...toRuntimeStatus(cfg),
+    hydrate: toHydratePayload(cfg),
   });
 }
 
@@ -48,6 +50,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       ...toRuntimeStatus(saved),
+      hydrate: toHydratePayload(saved),
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

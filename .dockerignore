@@ -16,3 +16,10 @@ data/._*
 **/._*
 *.tsbuildinfo
 LineDev-INITIAL-PASSWORD.txt
+
+_patch
+*.bak-*
+air-roundtrip-verify.sh
+DEPLOY-ON-AIR.sh
+
+_hydrate-await-patch

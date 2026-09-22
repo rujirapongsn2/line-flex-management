@@ -125,15 +125,46 @@ export async function writeRuntimeConfig(
   const prisma = await ensureDbReady();
   const current = await readRuntimeConfig();
 
+  // Preserve non-empty DB secrets when client sends "" / omits (wipe guard).
   const nextAgent = partial.agent
-    ? { ...current.agent, ...partial.agent }
+    ? {
+        ...current.agent,
+        ...partial.agent,
+        apiKey:
+          (partial.agent.apiKey || "").trim() || current.agent.apiKey,
+      }
     : current.agent;
   const nextLine = partial.line
-    ? { ...current.line, ...partial.line }
+    ? {
+        ...current.line,
+        ...partial.line,
+        channelAccessToken:
+          (partial.line.channelAccessToken || "").trim() ||
+          current.line.channelAccessToken,
+        channelSecret:
+          (partial.line.channelSecret || "").trim() ||
+          current.line.channelSecret,
+        longdoApiKey:
+          (partial.line.longdoApiKey || "").trim() ||
+          current.line.longdoApiKey,
+      }
     : current.line;
-  const nextTemplates = Array.isArray(partial.templates)
-    ? partial.templates
-    : current.templates;
+
+  // Empty templates array must NOT wipe existing DB templates.
+  let skipTemplateWrite = false;
+  let nextTemplates = current.templates;
+  if (Array.isArray(partial.templates)) {
+    if (partial.templates.length === 0 && current.templates.length > 0) {
+      console.warn(
+        "[runtime-config] refusing empty templates wipe — keeping existing",
+        current.templates.length
+      );
+      skipTemplateWrite = true;
+      nextTemplates = current.templates;
+    } else {
+      nextTemplates = partial.templates;
+    }
+  }
 
   if (partial.agent) {
     await prisma.agentConfig.upsert({
@@ -187,7 +218,7 @@ export async function writeRuntimeConfig(
     });
   }
 
-  if (Array.isArray(partial.templates)) {
+  if (Array.isArray(partial.templates) && !skipTemplateWrite) {
     await prisma.$transaction(async (tx) => {
       await tx.flexTemplate.deleteMany({});
       let order = 0;
@@ -273,6 +304,45 @@ export function toRuntimeStatus(cfg: RuntimeConfig): RuntimeConfigStatus {
   };
 }
 
+
+/** Secret-safe hydrate payload for console UI (SQLite is source of truth). */
+export type RuntimeHydratePayload = {
+  agent: {
+    name: string;
+    prompt: string;
+    baseUrl: string;
+    model: string;
+    enabled: boolean;
+  };
+  line: {
+    webhookConfirmed: boolean;
+    lastUserId: string;
+    liffId: string;
+    locationAction: LineConfig["locationAction"];
+  };
+  templates: ConsoleTemplate[];
+};
+
+export function toHydratePayload(cfg: RuntimeConfig): RuntimeHydratePayload {
+  return {
+    agent: {
+      name: cfg.agent.name || "",
+      prompt: cfg.agent.prompt || "",
+      baseUrl: cfg.agent.baseUrl || "",
+      model: cfg.agent.model || "",
+      enabled: cfg.agent.enabled !== false,
+    },
+    line: {
+      webhookConfirmed: Boolean(cfg.line.webhookConfirmed),
+      lastUserId: cfg.line.lastUserId || "",
+      liffId: cfg.line.liffId || "",
+      locationAction:
+        cfg.line.locationAction || defaultLocationAction(),
+    },
+    templates: Array.isArray(cfg.templates) ? cfg.templates : [],
+  };
+}
+
 /** Normalize POST body into console-shaped partial. */
 export function parseRuntimeBody(body: unknown): Partial<RuntimeConfig> {
   if (!body || typeof body !== "object") return {};
@@ -283,10 +353,26 @@ export function parseRuntimeBody(body: unknown): Partial<RuntimeConfig> {
   };
   const out: Partial<RuntimeConfig> = {};
   if (b.agent && typeof b.agent === "object") {
-    out.agent = { ...defaultAgent(), ...b.agent } as AgentConfig;
+    const agentIn = { ...defaultAgent(), ...b.agent } as AgentConfig;
+    // Drop empty apiKey so writeRuntimeConfig will not clear DB.
+    if (!(agentIn.apiKey || "").trim()) {
+      delete (agentIn as { apiKey?: string }).apiKey;
+    }
+    out.agent = agentIn;
   }
   if (b.line && typeof b.line === "object") {
-    out.line = { ...defaultLine(), ...b.line } as LineConfig;
+    const lineIn = { ...defaultLine(), ...b.line } as LineConfig;
+    // Drop empty secrets so merge cannot wipe non-empty SQLite values.
+    if (!(lineIn.channelAccessToken || "").trim()) {
+      delete (lineIn as { channelAccessToken?: string }).channelAccessToken;
+    }
+    if (!(lineIn.channelSecret || "").trim()) {
+      delete (lineIn as { channelSecret?: string }).channelSecret;
+    }
+    if (!(lineIn.longdoApiKey || "").trim()) {
+      delete (lineIn as { longdoApiKey?: string }).longdoApiKey;
+    }
+    out.line = lineIn;
   }
   if (Array.isArray(b.templates)) {
     out.templates = b.templates;
