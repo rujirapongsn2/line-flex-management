@@ -15,8 +15,15 @@ import {
   type LocationHttpConfig,
 } from "./locationHttp";
 import { buildNearbyResultsFlex } from "./nearbyFlex";
-import type { FlexMessage, LocationActionConfig, LocationActionMode } from "./types";
+import type {
+  FlexMessage,
+  LocationActionConfig,
+  LocationActionMode,
+  LocationHttpEndpoint,
+  LocationHttpMapper,
+} from "./types";
 import { defaultLocationAction } from "./types";
+import { mapIntentToLddTag } from "./nearbyIntent";
 
 export type LocationActionInput = {
   lat: number;
@@ -94,6 +101,50 @@ function parseLocationAction(
   if (o.http && typeof o.http === "object") {
     const h = o.http as Record<string, unknown>;
     const method = String(h.method || "GET").toUpperCase() as HttpMethod;
+    const endpointsRaw = Array.isArray(h.endpoints) ? h.endpoints : [];
+    const endpoints: LocationHttpEndpoint[] = [];
+    for (const ep of endpointsRaw) {
+      if (!ep || typeof ep !== "object") continue;
+      const e = ep as Record<string, unknown>;
+      const id = String(e.id || "").trim();
+      const urlTemplate = typeof e.urlTemplate === "string" ? e.urlTemplate : "";
+      if (!id || !urlTemplate.trim()) continue;
+      const em = String(e.method || method || "GET").toUpperCase() as HttpMethod;
+      const mapperRaw = String(e.mapper || "generic").trim() as LocationHttpMapper;
+      const mapper: LocationHttpMapper =
+        mapperRaw === "ldd_soil" ||
+        mapperRaw === "ldd_plant" ||
+        mapperRaw === "ldd_pool" ||
+        mapperRaw === "generic"
+          ? mapperRaw
+          : "generic";
+      const matchIn =
+        e.match && typeof e.match === "object"
+          ? (e.match as Record<string, unknown>)
+          : {};
+      endpoints.push({
+        id,
+        label: typeof e.label === "string" ? e.label : undefined,
+        method: ["GET", "POST", "PUT", "PATCH"].includes(em) ? em : "GET",
+        urlTemplate,
+        headers:
+          e.headers && typeof e.headers === "object" && !Array.isArray(e.headers)
+            ? (e.headers as Record<string, string>)
+            : undefined,
+        bodyTemplate:
+          typeof e.bodyTemplate === "string" ? e.bodyTemplate : undefined,
+        timeoutMs: typeof e.timeoutMs === "number" ? e.timeoutMs : undefined,
+        mapper,
+        match: {
+          tags: Array.isArray(matchIn.tags)
+            ? matchIn.tags.map(String)
+            : undefined,
+          keywords: Array.isArray(matchIn.keywords)
+            ? matchIn.keywords.map(String)
+            : undefined,
+        },
+      });
+    }
     http = {
       method: ["GET", "POST", "PUT", "PATCH"].includes(method)
         ? method
@@ -107,6 +158,17 @@ function parseLocationAction(
         typeof h.bodyTemplate === "string" ? h.bodyTemplate : undefined,
       timeoutMs:
         typeof h.timeoutMs === "number" ? h.timeoutMs : undefined,
+      sharedHeaders:
+        h.sharedHeaders &&
+        typeof h.sharedHeaders === "object" &&
+        !Array.isArray(h.sharedHeaders)
+          ? (h.sharedHeaders as Record<string, string>)
+          : h.headers && typeof h.headers === "object" && !Array.isArray(h.headers)
+            ? (h.headers as Record<string, string>)
+            : undefined,
+      defaultEndpointId:
+        typeof h.defaultEndpointId === "string" ? h.defaultEndpointId : "",
+      endpoints,
     };
   }
 
@@ -193,13 +255,86 @@ function summarizeItems(
   return `${head}\n${lines.join("\n")}`;
 }
 
-function normalizeHttpPayload(json: unknown, bodyText: string): LocationActionItem[] {
+
+function placeBits(o: Record<string, unknown>): string[] {
+  return [
+    o.tamName != null && String(o.tamName).trim()
+      ? `ต.${String(o.tamName).trim()}`
+      : null,
+    o.ampName != null && String(o.ampName).trim()
+      ? `อ.${String(o.ampName).trim()}`
+      : null,
+    o.provName != null && String(o.provName).trim()
+      ? `จ.${String(o.provName).trim()}`
+      : null,
+  ].filter(Boolean) as string[];
+}
+
+/** Pick HTTP endpoint: explicit tag → keyword match → default → first/legacy. */
+export function resolveHttpEndpoint(
+  http: NonNullable<LocationActionConfig["http"]>,
+  opts: { tag?: string; intent?: string; query?: string }
+): { endpoint: LocationHttpEndpoint; reason: string } | null {
+  const endpoints = Array.isArray(http.endpoints) ? http.endpoints : [];
+  const tag = (opts.tag || "").trim().toLowerCase();
+  const blob = `${opts.tag || ""} ${opts.intent || ""} ${opts.query || ""}`
+    .trim()
+    .toLowerCase();
+
+  if (endpoints.length) {
+    if (tag) {
+      const byId = endpoints.find((e) => e.id.toLowerCase() === tag);
+      if (byId) return { endpoint: byId, reason: "tag:id" };
+      const byMatchTag = endpoints.find((e) =>
+        (e.match?.tags || []).some((t) => t.toLowerCase() === tag)
+      );
+      if (byMatchTag) return { endpoint: byMatchTag, reason: "tag:match.tags" };
+    }
+    if (blob) {
+      for (const e of endpoints) {
+        const kws = e.match?.keywords || [];
+        if (kws.some((k) => k && blob.includes(String(k).toLowerCase()))) {
+          return { endpoint: e, reason: "keyword" };
+        }
+      }
+      const ldd = mapIntentToLddTag(blob);
+      if (ldd) {
+        const byLdd = endpoints.find((e) => e.id.toLowerCase() === ldd);
+        if (byLdd) return { endpoint: byLdd, reason: "ldd-intent" };
+      }
+    }
+    const defId = (http.defaultEndpointId || "").trim().toLowerCase();
+    if (defId) {
+      const byDef = endpoints.find((e) => e.id.toLowerCase() === defId);
+      if (byDef) return { endpoint: byDef, reason: "defaultEndpointId" };
+    }
+    return { endpoint: endpoints[0], reason: "first-endpoint" };
+  }
+
+  // Legacy single urlTemplate
+  if ((http.urlTemplate || "").trim()) {
+    const legacy: LocationHttpEndpoint = {
+      id: "legacy",
+      label: "legacy",
+      method: http.method,
+      urlTemplate: http.urlTemplate,
+      headers: http.headers,
+      bodyTemplate: http.bodyTemplate,
+      timeoutMs: http.timeoutMs,
+      mapper: "generic",
+    };
+    return { endpoint: legacy, reason: "legacy-urlTemplate" };
+  }
+  return null;
+}
+
+function normalizeHttpPayload(json: unknown, bodyText: string, mapper: LocationHttpMapper = "generic"): LocationActionItem[] {
   if (json == null) {
     if (!bodyText.trim()) return [];
     return [{ name: bodyText.slice(0, 200), raw: bodyText.slice(0, 500) }];
   }
   if (Array.isArray(json)) {
-    return json.map((item, i) => normalizeOne(item, i)).filter(Boolean) as LocationActionItem[];
+    return json.map((item, i) => normalizeOne(item, i, mapper)).filter(Boolean) as LocationActionItem[];
   }
   if (typeof json === "object") {
     const root = json as Record<string, unknown>;
@@ -211,11 +346,11 @@ function normalizeHttpPayload(json: unknown, bodyText: string): LocationActionIt
       null;
     if (list) {
       return list
-        .map((item, i) => normalizeOne(item, i))
+        .map((item, i) => normalizeOne(item, i, mapper))
         .filter(Boolean) as LocationActionItem[];
     }
     if (typeof root.name === "string" || typeof root.title === "string") {
-      const one = normalizeOne(root, 0);
+      const one = normalizeOne(root, 0, mapper);
       return one ? [one] : [];
     }
     if (typeof root.message === "string" || typeof root.summary === "string") {
@@ -233,34 +368,20 @@ function normalizeHttpPayload(json: unknown, bodyText: string): LocationActionIt
   return [{ name: "HTTP result", raw: json }];
 }
 
-/** LDD SearchSoil / similar soil parcels — no POI name fields. */
-function isSoilParcel(o: Record<string, unknown>): boolean {
-  return (
-    o.SOILSERIES != null ||
-    o.SOILGROUP != null ||
-    o.provName != null ||
-    o.ampName != null ||
-    o.tamName != null
-  );
+function detectMapper(o: Record<string, unknown>, hint: LocationHttpMapper): LocationHttpMapper {
+  if (hint && hint !== "generic") return hint;
+  if (o.SOILSERIES != null || o.SOILGROUP != null || o.FERTILITY != null) return "ldd_soil";
+  if (o.plantName != null || o.landSuitCF != null) return "ldd_plant";
+  if (o.codeDig != null || o.levelDig != null || o.AreaWaterSupplyIN != null) return "ldd_pool";
+  return "generic";
 }
 
 function soilParcelName(o: Record<string, unknown>, index: number): string {
-  const place = [
-    o.tamName != null && String(o.tamName).trim()
-      ? `ต.${String(o.tamName).trim()}`
-      : null,
-    o.ampName != null && String(o.ampName).trim()
-      ? `อ.${String(o.ampName).trim()}`
-      : null,
-    o.provName != null && String(o.provName).trim()
-      ? `จ.${String(o.provName).trim()}`
-      : null,
-  ].filter(Boolean);
   const series =
     o.SOILSERIES != null && String(o.SOILSERIES).trim()
       ? `ชุดดิน ${String(o.SOILSERIES).trim()}`
       : null;
-  const parts = [series, ...place].filter(Boolean);
+  const parts = [series, ...placeBits(o)].filter(Boolean);
   if (parts.length) return parts.join(" · ");
   return `แปลงดิน ${index + 1}`;
 }
@@ -279,7 +400,57 @@ function soilParcelAddress(o: Record<string, unknown>): string | undefined {
   return bits.length ? bits.join(", ") : undefined;
 }
 
-function normalizeOne(item: unknown, index: number): LocationActionItem | null {
+function plantParcelName(o: Record<string, unknown>, index: number): string {
+  const plant =
+    o.plantName != null && String(o.plantName).trim()
+      ? String(o.plantName).trim()
+      : null;
+  const suit =
+    o.landSuitCF != null && String(o.landSuitCF).trim()
+      ? `ความเหมาะสม ${String(o.landSuitCF).trim()}`
+      : null;
+  const parts = [plant, suit, ...placeBits(o)].filter(Boolean);
+  if (parts.length) return parts.join(" · ");
+  return `พืช ${index + 1}`;
+}
+
+function plantParcelAddress(o: Record<string, unknown>): string | undefined {
+  const bits = [
+    o.landSuitCF != null ? `ชั้นความเหมาะสม ${o.landSuitCF}` : null,
+    ...placeBits(o),
+  ].filter(Boolean);
+  return bits.length ? bits.join(", ") : undefined;
+}
+
+function poolParcelName(o: Record<string, unknown>, index: number): string {
+  const level =
+    o.levelDig != null && String(o.levelDig).trim()
+      ? `ระดับน้ำ ${String(o.levelDig).trim()}`
+      : null;
+  const code =
+    o.codeDig != null && String(o.codeDig).trim()
+      ? `รหัส ${String(o.codeDig).trim()}`
+      : null;
+  const parts = [level || code, ...placeBits(o)].filter(Boolean);
+  if (parts.length) return parts.join(" · ");
+  return `แหล่งน้ำ ${index + 1}`;
+}
+
+function poolParcelAddress(o: Record<string, unknown>): string | undefined {
+  const bits = [
+    o.codeDig != null ? `รหัส ${o.codeDig}` : null,
+    o.levelDig != null ? `ระดับ ${o.levelDig}` : null,
+    o.AreaWaterSupplyIN != null ? `พื้นที่ให้น้ำ ${o.AreaWaterSupplyIN}` : null,
+    ...placeBits(o),
+  ].filter(Boolean);
+  return bits.length ? bits.join(", ") : undefined;
+}
+
+function normalizeOne(
+  item: unknown,
+  index: number,
+  mapperHint: LocationHttpMapper = "generic"
+): LocationActionItem | null {
   if (item == null) return null;
   if (typeof item === "string") {
     return { name: item.slice(0, 200) };
@@ -288,23 +459,46 @@ function normalizeOne(item: unknown, index: number): LocationActionItem | null {
     return { name: String(item) };
   }
   const o = item as Record<string, unknown>;
-  const soil = isSoilParcel(o);
+  const mapper = detectMapper(o, mapperHint);
+  let mappedName = "";
+  let mappedAddress: string | undefined;
+  if (mapper === "ldd_soil") {
+    mappedName = soilParcelName(o, index);
+    mappedAddress = soilParcelAddress(o);
+  } else if (mapper === "ldd_plant") {
+    mappedName = plantParcelName(o, index);
+    mappedAddress = plantParcelAddress(o);
+  } else if (mapper === "ldd_pool") {
+    mappedName = poolParcelName(o, index);
+    mappedAddress = poolParcelAddress(o);
+  } else if (
+    o.SOILSERIES != null ||
+    o.plantName != null ||
+    o.levelDig != null ||
+    o.provName != null
+  ) {
+    // generic fallback for LDD-shaped rows without explicit mapper
+    if (o.plantName != null) {
+      mappedName = plantParcelName(o, index);
+      mappedAddress = plantParcelAddress(o);
+    } else if (o.SOILSERIES != null || o.SOILGROUP != null) {
+      mappedName = soilParcelName(o, index);
+      mappedAddress = soilParcelAddress(o);
+    } else if (o.levelDig != null || o.codeDig != null) {
+      mappedName = poolParcelName(o, index);
+      mappedAddress = poolParcelAddress(o);
+    } else if (placeBits(o).length) {
+      mappedName = placeBits(o).join(" · ");
+    }
+  }
   const name = String(
-    o.name ||
-      o.title ||
-      o.label ||
-      (soil ? soilParcelName(o, index) : "") ||
-      `item-${index + 1}`
+    o.name || o.title || o.label || mappedName || `item-${index + 1}`
   ).trim();
   if (!name) return null;
   const lat = Number(o.lat ?? o.latitude);
   const lon = Number(o.lon ?? o.lng ?? o.longitude);
   const address =
-    o.address != null
-      ? String(o.address)
-      : soil
-        ? soilParcelAddress(o)
-        : undefined;
+    o.address != null ? String(o.address) : mappedAddress;
   return {
     id: o.id != null ? String(o.id) : undefined,
     name,
@@ -344,8 +538,23 @@ export async function runLocationAction(opts: {
   }
 
   if (mode === "http") {
-    const httpCfg = cfg.http;
-    if (!httpCfg?.urlTemplate?.trim()) {
+    const httpCfg = cfg.http || defaultLocationAction().http!;
+    const tag =
+      (opts.input.tag || "").trim() ||
+      mapIntentToLddTag(
+        `${opts.input.intent || ""} ${opts.input.query || ""}`
+      ) ||
+      resolveSearchTag({
+        tag: opts.input.tag,
+        intent: opts.input.intent || opts.input.query,
+        useDefaultIfEmpty: false,
+      });
+    const resolved = resolveHttpEndpoint(httpCfg, {
+      tag,
+      intent: opts.input.intent,
+      query: opts.input.query,
+    });
+    if (!resolved) {
       return {
         ok: false,
         mode,
@@ -354,29 +563,32 @@ export async function runLocationAction(opts: {
         items: [],
         count: 0,
         summaryText: "",
-        error: "mode=http แต่ยังไม่ได้ตั้ง urlTemplate",
+        error:
+          "mode=http แต่ยังไม่มี endpoint (ตั้ง endpoints[] หรือ urlTemplate)",
       };
     }
-    const fetchCfg: LocationHttpConfig = {
-      method: httpCfg.method,
-      urlTemplate: httpCfg.urlTemplate,
-      headers: httpCfg.headers,
-      bodyTemplate: httpCfg.bodyTemplate,
-      timeoutMs: httpCfg.timeoutMs,
+    const ep = resolved.endpoint;
+    const mergedHeaders: Record<string, string> = {
+      ...(httpCfg.sharedHeaders || {}),
+      ...(httpCfg.headers || {}),
+      ...(ep.headers || {}),
     };
-    const tag =
-      (opts.input.tag || "").trim() ||
-      resolveSearchTag({
-        tag: opts.input.tag,
-        intent: opts.input.intent || opts.input.query,
-        useDefaultIfEmpty: false,
-      });
+    const fetchCfg: LocationHttpConfig = {
+      method: ep.method || httpCfg.method || "GET",
+      urlTemplate: ep.urlTemplate,
+      headers: mergedHeaders,
+      bodyTemplate:
+        ep.bodyTemplate != null && ep.bodyTemplate !== ""
+          ? ep.bodyTemplate
+          : httpCfg.bodyTemplate,
+      timeoutMs: ep.timeoutMs ?? httpCfg.timeoutMs,
+    };
     const fetched = await safeLocationFetch(fetchCfg, {
       lat,
       lon,
-      tag,
+      tag: tag || ep.id,
       userId: opts.input.userId,
-      query: opts.input.query || opts.input.intent || tag,
+      query: opts.input.query || opts.input.intent || tag || ep.id,
     });
     if (!fetched.ok) {
       return {
@@ -384,18 +596,24 @@ export async function runLocationAction(opts: {
         mode,
         lat,
         lon,
-        tag: tag || undefined,
+        tag: tag || ep.id,
         items: [],
         count: 0,
         summaryText: "",
         error: fetched.error,
-        raw: { status: fetched.status },
+        raw: { status: fetched.status, endpointId: ep.id, reason: resolved.reason },
       };
     }
-    const items = normalizeHttpPayload(fetched.json, fetched.bodyText);
-    const summaryText = summarizeItems(mode, items, lat, lon, tag || undefined);
+    const mapper: LocationHttpMapper = ep.mapper || "generic";
+    const items = normalizeHttpPayload(fetched.json, fetched.bodyText, mapper);
+    const summaryText = summarizeItems(
+      mode,
+      items,
+      lat,
+      lon,
+      tag || ep.id || undefined
+    );
     let flex: FlexMessage | undefined;
-    // Build flex only when items look like POIs with coords
     const poiLike = items.filter(
       (it) =>
         it.name &&
@@ -417,7 +635,7 @@ export async function runLocationAction(opts: {
           tags: it.tags,
           url: it.url,
         })),
-        tag: tag || "http",
+        tag: tag || ep.id || "http",
         lat,
         lon,
       });
@@ -427,12 +645,17 @@ export async function runLocationAction(opts: {
       mode,
       lat,
       lon,
-      tag: tag || undefined,
+      tag: tag || ep.id || undefined,
       items,
       count: items.length,
       summaryText,
       flex,
-      raw: fetched.json ?? fetched.bodyText.slice(0, 2000),
+      raw: {
+        endpointId: ep.id,
+        reason: resolved.reason,
+        mapper,
+        payload: fetched.json ?? fetched.bodyText.slice(0, 2000),
+      },
     };
   }
 

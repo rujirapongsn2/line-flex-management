@@ -51,15 +51,41 @@ export type AgentConfig = {
 /** After LIFF GPS: Longdo POI | custom HTTP | none — then optional LLM LINE reply */
 export type LocationActionMode = "longdo_poi" | "http" | "none";
 
+export type LocationHttpMapper =
+  | "generic"
+  | "ldd_soil"
+  | "ldd_plant"
+  | "ldd_pool";
+
+export type LocationHttpEndpoint = {
+  id: string;
+  label?: string;
+  method?: "GET" | "POST" | "PUT" | "PATCH";
+  urlTemplate: string;
+  headers?: Record<string, string>;
+  bodyTemplate?: string;
+  timeoutMs?: number;
+  /** How to normalize HTTP JSON into LocationActionItem[] */
+  mapper?: LocationHttpMapper;
+  match?: { tags?: string[]; keywords?: string[] };
+};
+
 export type LocationActionConfig = {
   mode: LocationActionMode;
   longdo?: { defaultTags?: string; limit?: number; span?: string };
   http?: {
+    /** Legacy single-endpoint fields (still supported). */
     method: "GET" | "POST" | "PUT" | "PATCH";
     urlTemplate: string;
     headers?: Record<string, string>;
     bodyTemplate?: string;
     timeoutMs?: number;
+    /** Shared auth/headers merged into every endpoint (endpoint headers win). */
+    sharedHeaders?: Record<string, string>;
+    /** Used when tag/intent does not match any endpoint. */
+    defaultEndpointId?: string;
+    /** Multi-endpoint catalog (preferred). */
+    endpoints?: LocationHttpEndpoint[];
   };
   reply?: { useLlm: boolean; fallbackFlexKey?: string };
 };
@@ -74,6 +100,9 @@ export function defaultLocationAction(): LocationActionConfig {
       headers: {},
       bodyTemplate: "",
       timeoutMs: 8000,
+      sharedHeaders: {},
+      defaultEndpointId: "",
+      endpoints: [],
     },
     reply: { useLlm: true, fallbackFlexKey: "nearby_results" },
   };

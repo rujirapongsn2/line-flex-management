@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { LineConfig, LocationActionConfig, LocationActionMode } from "@/lib/types";
+import type { LineConfig, LocationActionConfig, LocationActionMode, LocationHttpEndpoint } from "@/lib/types";
 import { defaultLocationAction } from "@/lib/types";
 import type { Readiness } from "./readiness";
 
@@ -391,62 +391,21 @@ export default function LineConnectPage({
 
                 {mode === "http" ? (
                   <div className="stack" style={{ gap: 10 }}>
-                    <div className="row gap-8">
-                      <div className="field" style={{ margin: 0, width: 120 }}>
-                        <label className="label">method</label>
-                        <select
-                          className="input"
-                          value={loc.http?.method || "GET"}
-                          onChange={(e) =>
-                            setLoc({
-                              ...loc,
-                              http: {
-                                ...(loc.http || {
-                                  method: "GET",
-                                  urlTemplate: "",
-                                }),
-                                method: e.target.value as
-                                  | "GET"
-                                  | "POST"
-                                  | "PUT"
-                                  | "PATCH",
-                              },
-                            })
-                          }
-                        >
-                          <option value="GET">GET</option>
-                          <option value="POST">POST</option>
-                          <option value="PUT">PUT</option>
-                          <option value="PATCH">PATCH</option>
-                        </select>
-                      </div>
-                      <div className="field" style={{ margin: 0, flex: 1 }}>
-                        <label className="label">urlTemplate</label>
-                        <input
-                          className="input mono"
-                          value={loc.http?.urlTemplate || ""}
-                          onChange={(e) =>
-                            setLoc({
-                              ...loc,
-                              http: {
-                                ...(loc.http || {
-                                  method: "GET",
-                                  urlTemplate: "",
-                                }),
-                                urlTemplate: e.target.value,
-                              },
-                            })
-                          }
-                          placeholder="https://api.example.com/near?lat={{lat}}&lon={{lon}}"
-                        />
-                      </div>
+                    <div className="hint">
+                      รองรับหลาย endpoint (เช่น soil / plant / pool) เลือกจาก{" "}
+                      <code>?tag=</code> บน LIFF หรือคำในแชท · ยังรองรับ urlTemplate
+                      เดิมอ่านเป็น endpoint เดียว
                     </div>
                     <div className="field" style={{ margin: 0 }}>
-                      <label className="label">headers (JSON)</label>
+                      <label className="label">sharedHeaders (JSON) — auth ร่วม</label>
                       <textarea
                         className="input mono"
                         rows={3}
-                        value={JSON.stringify(loc.http?.headers || {}, null, 2)}
+                        value={JSON.stringify(
+                          loc.http?.sharedHeaders || loc.http?.headers || {},
+                          null,
+                          2
+                        )}
                         onChange={(e) => {
                           try {
                             const parsed = JSON.parse(e.target.value || "{}") as Record<
@@ -457,9 +416,10 @@ export default function LineConnectPage({
                               ...loc,
                               http: {
                                 ...(loc.http || {
-                                  method: "GET",
+                                  method: "POST",
                                   urlTemplate: "",
                                 }),
+                                sharedHeaders: parsed,
                                 headers: parsed,
                               },
                             });
@@ -467,30 +427,297 @@ export default function LineConnectPage({
                             /* keep typing */
                           }
                         }}
-                        placeholder='{"Authorization":"Bearer {{secret:MY_API_TOKEN}}"}'
+                        placeholder='{"Authorization":"Bearer …","Content-Type":"application/json"}'
                       />
                     </div>
-                    <div className="field" style={{ margin: 0 }}>
-                      <label className="label">bodyTemplate</label>
-                      <textarea
+                    <div className="field" style={{ margin: 0, maxWidth: 220 }}>
+                      <label className="label">defaultEndpointId</label>
+                      <input
                         className="input mono"
-                        rows={3}
-                        value={loc.http?.bodyTemplate || ""}
+                        value={loc.http?.defaultEndpointId || ""}
                         onChange={(e) =>
                           setLoc({
                             ...loc,
                             http: {
                               ...(loc.http || {
-                                method: "GET",
+                                method: "POST",
                                 urlTemplate: "",
                               }),
-                              bodyTemplate: e.target.value,
+                              defaultEndpointId: e.target.value,
                             },
                           })
                         }
-                        placeholder='{"lat":{{lat}},"lon":{{lon}},"tag":"{{tag}}"}'
+                        placeholder="soil"
                       />
                     </div>
+
+                    {(loc.http?.endpoints || []).map((ep, idx) => {
+                      const endpoints = [...(loc.http?.endpoints || [])];
+                      const setEp = (next: LocationHttpEndpoint) => {
+                        endpoints[idx] = next;
+                        setLoc({
+                          ...loc,
+                          http: {
+                            ...(loc.http || {
+                              method: "POST",
+                              urlTemplate: "",
+                            }),
+                            endpoints,
+                          },
+                        });
+                      };
+                      return (
+                        <div
+                          key={`${ep.id || "ep"}-${idx}`}
+                          className="card"
+                          style={{ padding: 12, background: "var(--bg-muted, #f7f7f8)" }}
+                        >
+                          <div className="row gap-8" style={{ marginBottom: 8 }}>
+                            <div className="field" style={{ margin: 0, width: 120 }}>
+                              <label className="label">id</label>
+                              <input
+                                className="input mono"
+                                value={ep.id}
+                                onChange={(e) => setEp({ ...ep, id: e.target.value })}
+                              />
+                            </div>
+                            <div className="field" style={{ margin: 0, flex: 1 }}>
+                              <label className="label">label</label>
+                              <input
+                                className="input"
+                                value={ep.label || ""}
+                                onChange={(e) => setEp({ ...ep, label: e.target.value })}
+                              />
+                            </div>
+                            <div className="field" style={{ margin: 0, width: 110 }}>
+                              <label className="label">method</label>
+                              <select
+                                className="input"
+                                value={ep.method || "POST"}
+                                onChange={(e) =>
+                                  setEp({
+                                    ...ep,
+                                    method: e.target.value as LocationHttpEndpoint["method"],
+                                  })
+                                }
+                              >
+                                <option value="GET">GET</option>
+                                <option value="POST">POST</option>
+                                <option value="PUT">PUT</option>
+                                <option value="PATCH">PATCH</option>
+                              </select>
+                            </div>
+                            <div className="field" style={{ margin: 0, width: 140 }}>
+                              <label className="label">mapper</label>
+                              <select
+                                className="input"
+                                value={ep.mapper || "generic"}
+                                onChange={(e) =>
+                                  setEp({
+                                    ...ep,
+                                    mapper: e.target.value as LocationHttpEndpoint["mapper"],
+                                  })
+                                }
+                              >
+                                <option value="generic">generic</option>
+                                <option value="ldd_soil">ldd_soil</option>
+                                <option value="ldd_plant">ldd_plant</option>
+                                <option value="ldd_pool">ldd_pool</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div className="field" style={{ margin: "0 0 8px" }}>
+                            <label className="label">urlTemplate</label>
+                            <input
+                              className="input mono"
+                              value={ep.urlTemplate}
+                              onChange={(e) =>
+                                setEp({ ...ep, urlTemplate: e.target.value })
+                              }
+                            />
+                          </div>
+                          <div className="field" style={{ margin: "0 0 8px" }}>
+                            <label className="label">bodyTemplate</label>
+                            <textarea
+                              className="input mono"
+                              rows={3}
+                              value={ep.bodyTemplate || ""}
+                              onChange={(e) =>
+                                setEp({ ...ep, bodyTemplate: e.target.value })
+                              }
+                            />
+                          </div>
+                          <div className="row gap-8">
+                            <div className="field" style={{ margin: 0, flex: 1 }}>
+                              <label className="label">match.tags (CSV)</label>
+                              <input
+                                className="input mono"
+                                value={(ep.match?.tags || []).join(",")}
+                                onChange={(e) =>
+                                  setEp({
+                                    ...ep,
+                                    match: {
+                                      ...(ep.match || {}),
+                                      tags: e.target.value
+                                        .split(",")
+                                        .map((s) => s.trim())
+                                        .filter(Boolean),
+                                    },
+                                  })
+                                }
+                                placeholder="soil,ดิน"
+                              />
+                            </div>
+                            <div className="field" style={{ margin: 0, flex: 1 }}>
+                              <label className="label">match.keywords (CSV)</label>
+                              <input
+                                className="input mono"
+                                value={(ep.match?.keywords || []).join(",")}
+                                onChange={(e) =>
+                                  setEp({
+                                    ...ep,
+                                    match: {
+                                      ...(ep.match || {}),
+                                      keywords: e.target.value
+                                        .split(",")
+                                        .map((s) => s.trim())
+                                        .filter(Boolean),
+                                    },
+                                  })
+                                }
+                                placeholder="ชุดดิน,SearchSoil"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              style={{ alignSelf: "flex-end" }}
+                              onClick={() => {
+                                const next = endpoints.filter((_, i) => i !== idx);
+                                setLoc({
+                                  ...loc,
+                                  http: {
+                                    ...(loc.http || {
+                                      method: "POST",
+                                      urlTemplate: "",
+                                    }),
+                                    endpoints: next,
+                                  },
+                                });
+                              }}
+                            >
+                              ลบ
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => {
+                        const endpoints = [...(loc.http?.endpoints || [])];
+                        endpoints.push({
+                          id: `ep${endpoints.length + 1}`,
+                          label: "New endpoint",
+                          method: "POST",
+                          urlTemplate: "",
+                          bodyTemplate: "",
+                          mapper: "generic",
+                          match: { tags: [], keywords: [] },
+                        });
+                        setLoc({
+                          ...loc,
+                          http: {
+                            ...(loc.http || {
+                              method: "POST",
+                              urlTemplate: "",
+                            }),
+                            endpoints,
+                          },
+                        });
+                      }}
+                    >
+                      + เพิ่ม endpoint
+                    </button>
+
+                    <details>
+                      <summary className="text-sm text-muted" style={{ cursor: "pointer" }}>
+                        Legacy single urlTemplate (ถ้ายังไม่ใช้ endpoints)
+                      </summary>
+                      <div className="stack" style={{ gap: 8, marginTop: 8 }}>
+                        <div className="row gap-8">
+                          <div className="field" style={{ margin: 0, width: 120 }}>
+                            <label className="label">method</label>
+                            <select
+                              className="input"
+                              value={loc.http?.method || "GET"}
+                              onChange={(e) =>
+                                setLoc({
+                                  ...loc,
+                                  http: {
+                                    ...(loc.http || {
+                                      method: "GET",
+                                      urlTemplate: "",
+                                    }),
+                                    method: e.target.value as
+                                      | "GET"
+                                      | "POST"
+                                      | "PUT"
+                                      | "PATCH",
+                                  },
+                                })
+                              }
+                            >
+                              <option value="GET">GET</option>
+                              <option value="POST">POST</option>
+                              <option value="PUT">PUT</option>
+                              <option value="PATCH">PATCH</option>
+                            </select>
+                          </div>
+                          <div className="field" style={{ margin: 0, flex: 1 }}>
+                            <label className="label">urlTemplate</label>
+                            <input
+                              className="input mono"
+                              value={loc.http?.urlTemplate || ""}
+                              onChange={(e) =>
+                                setLoc({
+                                  ...loc,
+                                  http: {
+                                    ...(loc.http || {
+                                      method: "GET",
+                                      urlTemplate: "",
+                                    }),
+                                    urlTemplate: e.target.value,
+                                  },
+                                })
+                              }
+                            />
+                          </div>
+                        </div>
+                        <div className="field" style={{ margin: 0 }}>
+                          <label className="label">bodyTemplate (legacy)</label>
+                          <textarea
+                            className="input mono"
+                            rows={3}
+                            value={loc.http?.bodyTemplate || ""}
+                            onChange={(e) =>
+                              setLoc({
+                                ...loc,
+                                http: {
+                                  ...(loc.http || {
+                                    method: "GET",
+                                    urlTemplate: "",
+                                  }),
+                                  bodyTemplate: e.target.value,
+                                },
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
+                    </details>
                     <div className="hint">
                       Placeholders: {"{{lat}}"} {"{{lon}}"} {"{{tag}}"}{" "}
                       {"{{userId}}"} {"{{query}}"} · SSRF บล็อก localhost/private IP
