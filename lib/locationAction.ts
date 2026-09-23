@@ -233,6 +233,52 @@ function normalizeHttpPayload(json: unknown, bodyText: string): LocationActionIt
   return [{ name: "HTTP result", raw: json }];
 }
 
+/** LDD SearchSoil / similar soil parcels — no POI name fields. */
+function isSoilParcel(o: Record<string, unknown>): boolean {
+  return (
+    o.SOILSERIES != null ||
+    o.SOILGROUP != null ||
+    o.provName != null ||
+    o.ampName != null ||
+    o.tamName != null
+  );
+}
+
+function soilParcelName(o: Record<string, unknown>, index: number): string {
+  const place = [
+    o.tamName != null && String(o.tamName).trim()
+      ? `ต.${String(o.tamName).trim()}`
+      : null,
+    o.ampName != null && String(o.ampName).trim()
+      ? `อ.${String(o.ampName).trim()}`
+      : null,
+    o.provName != null && String(o.provName).trim()
+      ? `จ.${String(o.provName).trim()}`
+      : null,
+  ].filter(Boolean);
+  const series =
+    o.SOILSERIES != null && String(o.SOILSERIES).trim()
+      ? `ชุดดิน ${String(o.SOILSERIES).trim()}`
+      : null;
+  const parts = [series, ...place].filter(Boolean);
+  if (parts.length) return parts.join(" · ");
+  return `แปลงดิน ${index + 1}`;
+}
+
+function soilParcelAddress(o: Record<string, unknown>): string | undefined {
+  const bits = [
+    o.SOILGROUP != null ? `กลุ่มดิน ${o.SOILGROUP}` : null,
+    o.FERTILITY != null ? `ความอุดมสมบูรณ์ ${o.FERTILITY}` : null,
+    o.DRAINAGE != null ? `การระบายน้ำ ${o.DRAINAGE}` : null,
+    o.pH_TOP != null ? `pH บน ${o.pH_TOP}` : null,
+    o.pH_LOW != null ? `pH ล่าง ${o.pH_LOW}` : null,
+    o.DEPTH != null ? `ความลึก ${o.DEPTH}` : null,
+    o.CEC_TOP != null ? `CEC บน ${o.CEC_TOP}` : null,
+    o.EC != null ? `EC ${o.EC}` : null,
+  ].filter(Boolean);
+  return bits.length ? bits.join(", ") : undefined;
+}
+
 function normalizeOne(item: unknown, index: number): LocationActionItem | null {
   if (item == null) return null;
   if (typeof item === "string") {
@@ -242,16 +288,29 @@ function normalizeOne(item: unknown, index: number): LocationActionItem | null {
     return { name: String(item) };
   }
   const o = item as Record<string, unknown>;
-  const name = String(o.name || o.title || o.label || `item-${index + 1}`).trim();
+  const soil = isSoilParcel(o);
+  const name = String(
+    o.name ||
+      o.title ||
+      o.label ||
+      (soil ? soilParcelName(o, index) : "") ||
+      `item-${index + 1}`
+  ).trim();
   if (!name) return null;
   const lat = Number(o.lat ?? o.latitude);
   const lon = Number(o.lon ?? o.lng ?? o.longitude);
+  const address =
+    o.address != null
+      ? String(o.address)
+      : soil
+        ? soilParcelAddress(o)
+        : undefined;
   return {
     id: o.id != null ? String(o.id) : undefined,
     name,
     lat: Number.isFinite(lat) ? lat : undefined,
     lon: Number.isFinite(lon) ? lon : undefined,
-    address: o.address != null ? String(o.address) : undefined,
+    address,
     tel: o.tel != null ? String(o.tel) : o.phone != null ? String(o.phone) : undefined,
     distance: (o.distance as string | number | undefined) ?? undefined,
     tags: Array.isArray(o.tags) ? o.tags.map(String) : undefined,
