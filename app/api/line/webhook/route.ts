@@ -244,6 +244,15 @@ async function handleTextMessage(event: LineEvent): Promise<void> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[webhook] agent error", msg);
+    // Never expose upstream infra URLs / httpx dumps to LINE end users
+    const lower = msg.toLowerCase();
+    const isUpstream =
+      /sdp-ai-generator|chat-messages|internal server error|econnrefused|etimedout|fetch failed|llm http|certificate/i.test(
+        msg
+      ) || lower.includes("server error");
+    const userText = isUpstream
+      ? "ขออภัยครับ ระบบตอบคำถามความรู้ยังเชื่อมต่อ GenAI ไม่สำเร็จในขณะนี้ กรุณาลองใหม่ภายหลัง หรือแจ้งผู้ดูแล Softnix GenAI"
+      : `ขออภัย มีข้อผิดพลาด: ${msg.slice(0, 120)}`;
     try {
       await sendLineMessages({
         channelAccessToken: lineToken,
@@ -252,7 +261,7 @@ async function handleTextMessage(event: LineEvent): Promise<void> {
         messages: [
           {
             type: "text",
-            text: `ขออภัย มีข้อผิดพลาด: ${msg.slice(0, 120)}`,
+            text: userText,
           },
         ],
       });

@@ -330,16 +330,16 @@ export async function seedCheckinTemplates(prisma: PrismaClient): Promise<void> 
 
   const ask = {
     id: "checkin_ask",
-    displayNameTh: "แชร์พิกัดค้นหาใกล้เคียง",
+    displayNameTh: "แชร์พิกัด (LIFF)",
     conditionKey: "checkin_ask",
     modelDescription:
-      "เมื่อลูกค้าถามสถานที่ใกล้เคียง / ใกล้ฉัน / แถวนี้มี… / 7-11 / โรงพยาบาล หรือขอแชร์พิกัด — ส่งการ์ด CTA เปิด LIFF (ใส่ tag ใน fields ถ้าทราบ; ไม่ใช้ LINE location picker เป็นหลัก). ห้ามตอบ «ไม่มีข้อมูล» โดยไม่มีพิกัด",
+      "ใช้เมื่อรู้ประเภทแล้ว (จากคำถาม เช่น ดิน/พืช/แหล่งน้ำ หรือแท็ก Longdo เช่น 7-11) หรือไม่ต้องเลือกประเภท — ส่งการ์ดเปิด LIFF ให้แชร์ GPS จากนั้นระบบเรียก Location Action ห้ามตอบ «ไม่มีข้อมูล» โดยยังไม่มีพิกัด ห้ามใช้กับคำถามความรู้ เช่น «ชุดดินชลบุรีคืออะไร»",
     triggerExamples: JSON.stringify([
-      "แถวนี้มีร้าน 7-11 ที่ไหนบ้าง",
-      "มีโรงพยาบาลใกล้ฉันไหม",
-      "ค้นหาคอนโดใกล้เคียง",
-      "แชร์พิกัด",
-      "เช็คอิน",
+      "ข้อมูลดินตรงนี้",
+      "พืชที่เหมาะสมใกล้ฉัน",
+      "แหล่งน้ำแถวนี้",
+      "7-11 ใกล้ฉัน",
+      "โรงพยาบาลใกล้ฉัน",
     ]),
     variables: JSON.stringify([]),
     kind: "bubble-simple",
@@ -352,7 +352,7 @@ export async function seedCheckinTemplates(prisma: PrismaClient): Promise<void> 
     displayNameTh: "ผลค้นหาใกล้เคียง",
     conditionKey: "nearby_results",
     modelDescription:
-      "การ์ดรายการ POI จาก Longdo หลังได้พิกัด (สร้างจาก /api/poi/search)",
+      "การ์ดรายการผลหลังได้พิกัด — ใช้หลักในโหมด Longdo POI หรือเป็น fallback เมื่อตอบด้วยข้อความ/LLM ไม่สำเร็จ (ตั้งค่า fallbackFlexKey) โหมด HTTP (เช่น LDD) มักตอบเป็นข้อความจากผล API เป็นหลัก ไม่ใช่การ์ดเปิด LIFF",
     triggerExamples: JSON.stringify([]),
     variables: JSON.stringify([
       { name: "lat", example: "13.7563", required: true },
@@ -367,16 +367,15 @@ export async function seedCheckinTemplates(prisma: PrismaClient): Promise<void> 
   const chooserFields = locationTypeChooserTemplateFields(liffId);
   const chooser = {
     id: "location_type_chooser",
-    displayNameTh: "เลือกประเภท Location Action",
+    displayNameTh: "เลือกประเภทก่อนแชร์พิกัด",
     conditionKey: "location_type_chooser",
     modelDescription:
-      "เมื่อลูกค้าขอเช็คอิน/ใกล้เคียงโดยไม่ระบุประเภท และ Location Action มีหลาย HTTP endpoint — ส่งการ์ดนี้ให้เลือกประเภท (ปุ่มเปิด LIFF ด้วย tag=endpoint id)",
+      "ใช้เมื่อลูกค้าขอเช็คอิน / แชร์พิกัด / ค้นหาจากตำแหน่ง แต่ยังไม่ระบุประเภท และ Location Action เป็นโหมด HTTP มีหลาย endpoint (เช่น ดิน · พืช · แหล่งน้ำ) — ส่งการ์ดให้เลือกประเภท แล้วเปิด LIFF ด้วย tag ตามปุ่ม ไม่ใช้ตอบคำถามความรู้ทั่วไป",
     triggerExamples: JSON.stringify([
       "เช็คอิน",
       "checkin",
+      "แชร์พิกัด",
       "หาข้อมูลจากพิกัด",
-      "ข้อมูลดิน",
-      "แหล่งน้ำใกล้ฉัน",
     ]),
     variables: JSON.stringify([]),
     kind: "raw-json",
