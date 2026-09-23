@@ -1,5 +1,6 @@
 import { defaultFields } from "./flexTemplates";
 import { checkinAskTemplateFields, checkinResultTemplateFields } from "./checkinFlex";
+import { locationTypeChooserTemplateFields } from "./nearbyFlex";
 import { getLiffOpenUrl } from "./liffConfig";
 import type {
   AgentConfig,
@@ -121,6 +122,24 @@ export function seedTemplates(): ConsoleTemplate[] {
       ],
       kind: "bubble-simple",
       fields: checkinResultTemplateFields(),
+      enabled: true,
+    },
+    {
+      id: "location_type_chooser",
+      displayNameTh: "เลือกประเภท Location Action",
+      conditionKey: "location_type_chooser",
+      modelDescription:
+        "เมื่อลูกค้าขอเช็คอิน/ใกล้เคียงโดยไม่ระบุประเภท และ Location Action มีหลาย HTTP endpoint — ส่งการ์ดนี้ให้เลือกประเภท (ปุ่มเปิด LIFF ด้วย tag=endpoint id)",
+      triggerExamples: [
+        "เช็คอิน",
+        "checkin",
+        "หาข้อมูลจากพิกัด",
+        "ข้อมูลดิน",
+        "แหล่งน้ำใกล้ฉัน",
+      ],
+      variables: [],
+      kind: "raw-json",
+      fields: locationTypeChooserTemplateFields(),
       enabled: true,
     },
     {

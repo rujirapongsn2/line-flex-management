@@ -6,6 +6,7 @@ import {
   checkinAskTemplateFields,
   checkinResultTemplateFields,
 } from "./checkinFlex";
+import { locationTypeChooserTemplateFields } from "./nearbyFlex";
 import { getEnvLiffId } from "./liffConfig";
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -363,11 +364,31 @@ export async function seedCheckinTemplates(prisma: PrismaClient): Promise<void> 
     enabled: true,
     sortOrder: 101,
   };
+  const chooserFields = locationTypeChooserTemplateFields(liffId);
+  const chooser = {
+    id: "location_type_chooser",
+    displayNameTh: "เลือกประเภท Location Action",
+    conditionKey: "location_type_chooser",
+    modelDescription:
+      "เมื่อลูกค้าขอเช็คอิน/ใกล้เคียงโดยไม่ระบุประเภท และ Location Action มีหลาย HTTP endpoint — ส่งการ์ดนี้ให้เลือกประเภท (ปุ่มเปิด LIFF ด้วย tag=endpoint id)",
+    triggerExamples: JSON.stringify([
+      "เช็คอิน",
+      "checkin",
+      "หาข้อมูลจากพิกัด",
+      "ข้อมูลดิน",
+      "แหล่งน้ำใกล้ฉัน",
+    ]),
+    variables: JSON.stringify([]),
+    kind: "raw-json",
+    fields: JSON.stringify(chooserFields),
+    enabled: true,
+    sortOrder: 102,
+  };
 
   // Create-only: never overwrite admin edits from Flex console.
   // writeRuntimeConfig calls ensureNearbySeeds after every save; upsert-update
   // previously wiped checkin_ask / nearby_results back to seed defaults.
-  for (const row of [ask, result]) {
+  for (const row of [ask, result, chooser]) {
     const existing = await prisma.flexTemplate.findUnique({
       where: { id: row.id },
       select: { id: true },

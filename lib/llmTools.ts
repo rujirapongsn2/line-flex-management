@@ -3,9 +3,14 @@ import {
   buildFlex,
   defaultFields,
 } from "./flexTemplates";
-import { buildLocationAskFlex } from "./nearbyFlex";
+import {
+  buildLocationAskFlex,
+  resolveLocationTypeChooserFlex,
+  DEFAULT_LDD_CHOICES,
+  type LocationChooserEndpoint,
+} from "./nearbyFlex";
 import { mapIntentToLongdoTag } from "./longdo";
-import { getEnvLiffId } from "./liffConfig";
+import { getEnvLiffId, resolveLiffId } from "./liffConfig";
 import type { ConsoleTemplate, FlexMessage, TemplateId } from "./types";
 import {
   chatCompletion,
@@ -129,6 +134,8 @@ function stringifyFields(
 
 type ToolCtx = {
   customTemplates: ConsoleTemplate[];
+  locationChooserEndpoints: LocationChooserEndpoint[];
+  liffId?: string | null;
 };
 
 function executeTool(
@@ -255,13 +262,25 @@ function executeTool(
           String(args.intent || args.query || merged.body || "")
         );
       flex = buildLocationAskFlex({
-        liffId: getEnvLiffId(),
+        liffId: resolveLiffId(ctx.liffId) || getEnvLiffId(),
         tag: tag || undefined,
         title: merged.title || undefined,
         body: merged.body || undefined,
         buttonLabel: merged.buttonLabel || undefined,
       });
       if (merged.altText) flex.altText = merged.altText;
+    } else if (
+      resolvedKey === "location_type_chooser" ||
+      conditionKey === "location_type_chooser"
+    ) {
+      flex = resolveLocationTypeChooserFlex({
+        liffId: resolveLiffId(ctx.liffId) || getEnvLiffId(),
+        endpoints:
+          ctx.locationChooserEndpoints.length > 0
+            ? ctx.locationChooserEndpoints
+            : DEFAULT_LDD_CHOICES,
+        templateFields: merged,
+      });
     } else {
       flex = buildFlex(kind, merged);
     }
@@ -316,6 +335,7 @@ export async function runAgentTurn(opts: {
   userText: string;
   systemExtra?: string;
   templates?: ConsoleTemplate[];
+  liffId?: string | null;
 }): Promise<AgentTurnResult> {
   const model = (opts.model || getDefaultModel()).trim() || getDefaultModel();
   const userText = (opts.userText || "").trim();
@@ -342,6 +362,29 @@ export async function runAgentTurn(opts: {
     systemContent += `\n\nEnabled Flex templates (use condition_key with render_flex_template):\n${catalog}`;
   }
 
+  let locationChooserEndpoints: LocationChooserEndpoint[] = [];
+  let liffId: string | null | undefined = opts.liffId;
+  try {
+    const { readRuntimeConfig } = await import("./serverRuntimeConfig");
+    const { parseLocationActionJson } = await import("./locationAction");
+    const { defaultLocationAction } = await import("./types");
+    const runtime = await readRuntimeConfig();
+    if (liffId == null || liffId === undefined) {
+      liffId = runtime.line.liffId;
+    }
+    const locCfg =
+      runtime.line.locationAction ||
+      parseLocationActionJson("") ||
+      defaultLocationAction();
+    if (locCfg.mode === "http" && Array.isArray(locCfg.http?.endpoints)) {
+      locationChooserEndpoints = locCfg.http!.endpoints!
+        .filter((e) => (e.urlTemplate || "").trim())
+        .map((e) => ({ id: e.id, label: e.label || e.id }));
+    }
+  } catch {
+    /* sandbox / missing DB — use DEFAULT_LDD_CHOICES downstream */
+  }
+
   const messages: OpenRouterMessage[] = [
     { role: "system", content: systemContent },
     { role: "user", content: userText },
@@ -353,7 +396,11 @@ export async function runAgentTurn(opts: {
     textReply?: string;
     conditionKey?: string;
   } = {};
-  const ctx: ToolCtx = { customTemplates };
+  const ctx: ToolCtx = {
+    customTemplates,
+    locationChooserEndpoints,
+    liffId,
+  };
   const rawRounds: unknown[] = [];
   const maxRounds = 4;
 

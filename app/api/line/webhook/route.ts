@@ -9,7 +9,7 @@ import { recordWebhookUser } from "@/lib/webhookStore";
 import { detectNearbyIntent } from "@/lib/nearbyIntent";
 import {
   buildLocationAskFlex,
-  buildLocationTypeChooserFlex,
+  resolveLocationTypeChooserFlex,
 } from "@/lib/nearbyFlex";
 import { parseLocationActionJson } from "@/lib/locationAction";
 import { defaultLocationAction } from "@/lib/types";
@@ -76,10 +76,12 @@ async function replyLocationTypeChooser(opts: {
   replyToken: string;
   liffId?: string;
   endpoints: Array<{ id: string; label?: string }>;
+  templateFields?: Record<string, string> | null;
 }): Promise<boolean> {
-  const flex = buildLocationTypeChooserFlex({
+  const flex = resolveLocationTypeChooserFlex({
     liffId: resolveLiffId(opts.liffId) || getEnvLiffId(),
     endpoints: opts.endpoints,
+    templateFields: opts.templateFields,
   });
   const result = await sendLineMessages({
     channelAccessToken: opts.lineToken,
@@ -93,7 +95,8 @@ async function replyLocationTypeChooser(opts: {
   }
   console.info(
     "[webhook] hard-routed nearby intent → location_type_chooser",
-    `endpoints=${opts.endpoints.map((e) => e.id).join(",")}`
+    `endpoints=${opts.endpoints.map((e) => e.id).join(",")}`,
+    opts.templateFields ? "via_template" : "via_builder"
   );
   return true;
 }
@@ -155,6 +158,12 @@ async function handleTextMessage(event: LineEvent): Promise<void> {
 
     // Multi HTTP endpoints + no clear type → ask user to pick first
     if (locCfg.mode === "http" && endpoints.length >= 2 && !hasTypedEndpoint) {
+      const chooserTpl = templates.find(
+        (t) =>
+          t.enabled &&
+          (t.id === "location_type_chooser" ||
+            t.conditionKey === "location_type_chooser")
+      );
       await replyLocationTypeChooser({
         lineToken,
         replyToken,
@@ -163,6 +172,7 @@ async function handleTextMessage(event: LineEvent): Promise<void> {
           id: e.id,
           label: e.label || e.id,
         })),
+        templateFields: chooserTpl?.fields || null,
       });
       return;
     }

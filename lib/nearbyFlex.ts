@@ -235,7 +235,7 @@ export type LocationChooserEndpoint = {
   label?: string;
 };
 
-const DEFAULT_LDD_CHOICES: LocationChooserEndpoint[] = [
+export const DEFAULT_LDD_CHOICES: LocationChooserEndpoint[] = [
   { id: "soil", label: "ข้อมูลดิน" },
   { id: "plant", label: "พืชที่เหมาะสม" },
   { id: "pool", label: "แหล่งน้ำ" },
@@ -326,6 +326,182 @@ export function buildLocationTypeChooserFlex(opts: {
       },
     },
   };
+}
+
+
+/** Seed fields for Flex console (raw-json bubble; runtime rewrites LIFF URIs). */
+export function locationTypeChooserTemplateFields(
+  liffId?: string | null
+): Record<string, string> {
+  const flex = buildLocationTypeChooserFlex({
+    liffId,
+    endpoints: DEFAULT_LDD_CHOICES,
+  });
+  return {
+    altText: flex.altText,
+    rawContents: JSON.stringify(flex.contents, null, 2),
+  };
+}
+
+function normalizeChooserEndpoints(
+  endpoints?: LocationChooserEndpoint[] | null
+): LocationChooserEndpoint[] {
+  const raw =
+    endpoints && endpoints.length > 0 ? endpoints : DEFAULT_LDD_CHOICES;
+  return raw
+    .map((e) => ({
+      id: String(e.id || "").trim(),
+      label: (e.label || e.id || "").trim() || String(e.id || "").trim(),
+    }))
+    .filter((e) => e.id)
+    .slice(0, 4);
+}
+
+function parseRawContents(raw: string | undefined): Record<string, unknown> | null {
+  if (!raw || !String(raw).trim()) return null;
+  try {
+    const parsed = JSON.parse(String(raw)) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const obj = parsed as Record<string, unknown>;
+    const t = obj.type;
+    if (t !== "bubble" && t !== "carousel") return null;
+    return obj;
+  } catch {
+    return null;
+  }
+}
+
+function cloneJson<T>(v: T): T {
+  return JSON.parse(JSON.stringify(v)) as T;
+}
+
+function makeChooserButton(
+  label: string,
+  uri: string,
+  index: number
+): Record<string, unknown> {
+  const btn: Record<string, unknown> = {
+    type: "button",
+    style: index === 0 ? "primary" : "secondary",
+    height: "md",
+    action: {
+      type: "uri",
+      label: label.slice(0, 20),
+      uri,
+    },
+  };
+  if (index === 0) btn.color = ACCENT;
+  if (index > 0) btn.margin = "sm";
+  return btn;
+}
+
+function applyTitleBodyOverrides(
+  bubble: Record<string, unknown>,
+  fields: Record<string, string>
+): void {
+  const title = (fields.title || "").trim();
+  const body = (fields.body || "").trim();
+  if (!title && !body) return;
+  const bodyBox = bubble.body as Record<string, unknown> | undefined;
+  if (!bodyBox || bodyBox.type !== "box" || !Array.isArray(bodyBox.contents)) return;
+  let textIdx = 0;
+  for (const node of bodyBox.contents as Record<string, unknown>[]) {
+    if (!node || node.type !== "text") continue;
+    if (textIdx === 0 && title) node.text = title;
+    else if (textIdx === 1 && body) node.text = body;
+    textIdx += 1;
+    if (textIdx > 1) break;
+  }
+}
+
+/**
+ * Prefer Flex template `location_type_chooser` (raw-json) when present.
+ * Runtime: rewrite button URIs by endpoint order; keep admin template labels;
+ * append missing buttons with endpoint labels. Fallback to buildLocationTypeChooserFlex.
+ */
+export function resolveLocationTypeChooserFlex(opts: {
+  liffId?: string | null;
+  endpoints?: LocationChooserEndpoint[] | null;
+  templateFields?: Record<string, string> | null;
+}): FlexMessage {
+  const choices = normalizeChooserEndpoints(opts.endpoints);
+  const fields = opts.templateFields || null;
+  const contents = fields ? parseRawContents(fields.rawContents) : null;
+
+  if (contents && contents.type === "bubble") {
+    try {
+      const bubble = cloneJson(contents);
+      if (fields) applyTitleBodyOverrides(bubble, fields);
+
+      let footer = bubble.footer as Record<string, unknown> | undefined;
+      if (!footer || footer.type !== "box") {
+        footer = {
+          type: "box",
+          layout: "vertical",
+          spacing: "sm",
+          contents: [],
+        };
+        bubble.footer = footer;
+      }
+
+      const existing = Array.isArray(footer.contents)
+        ? (footer.contents as Record<string, unknown>[]).filter(
+            (c) => c && c.type === "button"
+          )
+        : [];
+
+      const nextButtons: Record<string, unknown>[] = [];
+      for (let i = 0; i < choices.length; i++) {
+        const ep = choices[i]!;
+        const uri = getLiffOpenUrl(opts.liffId, ep.id);
+        const tplBtn = existing[i];
+        if (tplBtn) {
+          const action =
+            tplBtn.action && typeof tplBtn.action === "object"
+              ? ({ ...(tplBtn.action as Record<string, unknown>) } as Record<
+                  string,
+                  unknown
+                >)
+              : {};
+          const tplLabel = String(action.label || "").trim();
+          const label = (tplLabel || ep.label || ep.id).slice(0, 20);
+          // Keep template labels; always rewrite URI from endpoint id by order.
+          action.type = "uri";
+          action.label = label;
+          action.uri = uri;
+          nextButtons.push({ ...tplBtn, action });
+        } else {
+          nextButtons.push(
+            makeChooserButton(ep.label || ep.id, uri, i)
+          );
+        }
+      }
+
+      if (nextButtons.length === 0) {
+        return buildLocationTypeChooserFlex({
+          liffId: opts.liffId,
+          endpoints: choices,
+          title: fields?.title,
+          body: fields?.body,
+        });
+      }
+
+      footer.contents = nextButtons;
+      const altText =
+        (fields?.altText || "").trim() ||
+        "เลือกประเภทข้อมูลก่อนแชร์พิกัด";
+      return { type: "flex", altText, contents: bubble };
+    } catch {
+      /* fall through to builder */
+    }
+  }
+
+  return buildLocationTypeChooserFlex({
+    liffId: opts.liffId,
+    endpoints: choices,
+    title: fields?.title,
+    body: fields?.body,
+  });
 }
 
 /** @deprecated alias — location ask used to be check-in CTA */

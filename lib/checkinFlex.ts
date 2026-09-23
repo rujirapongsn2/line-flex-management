@@ -6,11 +6,16 @@ export {
   buildCheckinAskFlex,
   buildLocationAskFlex,
   buildNearbyResultsFlex,
+  buildLocationTypeChooserFlex,
+  resolveLocationTypeChooserFlex,
   locationAskTemplateFields as checkinAskTemplateFields,
   nearbyResultTemplateFields as checkinResultTemplateFields,
   locationAskTemplateFields,
   nearbyResultTemplateFields,
+  locationTypeChooserTemplateFields,
+  DEFAULT_LDD_CHOICES,
 } from "./nearbyFlex";
+export type { LocationChooserEndpoint } from "./nearbyFlex";
 
 import type { FlexMessage } from "./types";
 import { ACCENT } from "./types";
