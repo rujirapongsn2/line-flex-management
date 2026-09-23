@@ -237,7 +237,8 @@ export default function LiffNearbyPage() {
           pushReply: true,
         }),
       });
-      const data = (await res.json()) as {
+      const rawText = await res.text();
+      let data: {
         ok?: boolean;
         error?: string;
         flex?: unknown;
@@ -248,13 +249,29 @@ export default function LiffNearbyPage() {
         replyKind?: string;
         llmUsed?: boolean;
         pushed?: boolean;
-      };
+      } = {};
+      try {
+        data = rawText ? (JSON.parse(rawText) as typeof data) : {};
+      } catch {
+        throw new Error(
+          res.status >= 500
+            ? "เซิร์ฟเวอร์ตอบไม่สำเร็จ กรุณาลองใหม่ในอีกสักครู่"
+            : "ค้นหาไม่สำเร็จ (ตอบกลับไม่ใช่ JSON)"
+        );
+      }
       if (!res.ok || !data.ok) {
         if (data.needLongdoKey) {
           setPhase("need_longdo");
           setSetupHint(data.error || null);
         }
-        throw new Error(data.error || "ค้นหาไม่สำเร็จ");
+        const errText = (data.error || "").trim();
+        if (/did not match the expected pattern/i.test(errText)) {
+          throw new Error("ค่าที่ส่งไม่ถูกต้อง — ลองปิดหน้านี้แล้วเปิดใหม่จาก LINE");
+        }
+        if (/too large/i.test(errText)) {
+          throw new Error("ข้อมูลจากบริการภายนอกใหญ่เกินไป — แจ้งทีมเพื่อปรับตัวกรอง");
+        }
+        throw new Error(errText || "ค้นหาไม่สำเร็จ");
       }
 
       setResultCount(typeof data.count === "number" ? data.count : null);

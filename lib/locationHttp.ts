@@ -29,7 +29,9 @@ export type SafeFetchResult =
   | { ok: true; status: number; bodyText: string; json: unknown }
   | { ok: false; error: string; status?: number };
 
-const MAX_BODY_BYTES = 1_500_000; // ~1.5 MB
+const MAX_BODY_BYTES = 1_500_000; // ~1.5 MB after stripping heavy geo fields
+/** Upstream may send multi-MB WKT polygons (e.g. LDD SearchPlant). Read up to this, then strip. */
+const MAX_RAW_BODY_BYTES = 12_000_000;
 const DEFAULT_TIMEOUT_MS = 8000;
 const MAX_REDIRECTS = 0; // no redirects (safer)
 
@@ -155,6 +157,41 @@ async function resolveAndAssertPublic(hostname: string): Promise<string[]> {
   return ips;
 }
 
+
+const HEAVY_GEO_KEYS = new Set([
+  "geometrytext",
+  "geometry",
+  "geom",
+  "wkt",
+  "the_geom",
+]);
+
+/** Drop multi-MB WKT / geometry string fields from JSON text before parse. */
+export function stripHeavyGeoJsonFields(bodyText: string): string {
+  if (!bodyText || bodyText.length < 64) return bodyText;
+  // "geometryText":"<possibly huge WKT>"
+  return bodyText.replace(
+    /"(geometryText|geometry|geom|wkt|the_geom)"\s*:\s*"(?:\\.|[^"\\])*"/gi,
+    '"$1":""'
+  );
+}
+
+export function stripHeavyGeoFromParsed(json: unknown): unknown {
+  if (Array.isArray(json)) {
+    return json.map((x) => stripHeavyGeoFromParsed(x));
+  }
+  if (json && typeof json === "object") {
+    const o = json as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(o)) {
+      if (HEAVY_GEO_KEYS.has(k.toLowerCase())) continue;
+      out[k] = stripHeavyGeoFromParsed(v);
+    }
+    return out;
+  }
+  return json;
+}
+
 export async function safeLocationFetch(
   cfg: LocationHttpConfig,
   vars: TemplateVars
@@ -262,17 +299,25 @@ export async function safeLocationFetch(
     }
 
     const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.byteLength > MAX_BODY_BYTES) {
+    if (buf.byteLength > MAX_RAW_BODY_BYTES) {
       return {
         ok: false,
-        error: `Response body too large (>${MAX_BODY_BYTES} bytes)`,
+        error: `Response body too large (>${MAX_RAW_BODY_BYTES} bytes)`,
         status: res.status,
       };
     }
-    const bodyText = buf.toString("utf8");
+    // LDD SearchPlant embeds multi-MB POLYGON WKT — strip before size/parse.
+    const bodyText = stripHeavyGeoJsonFields(buf.toString("utf8"));
+    if (Buffer.byteLength(bodyText, "utf8") > MAX_BODY_BYTES) {
+      return {
+        ok: false,
+        error: `Response body too large after geo strip (>${MAX_BODY_BYTES} bytes)`,
+        status: res.status,
+      };
+    }
     let json: unknown = null;
     try {
-      json = bodyText ? JSON.parse(bodyText) : null;
+      json = bodyText ? stripHeavyGeoFromParsed(JSON.parse(bodyText)) : null;
     } catch {
       json = null;
     }

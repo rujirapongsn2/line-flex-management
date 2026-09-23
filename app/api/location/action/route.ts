@@ -197,11 +197,13 @@ export async function POST(req: NextRequest) {
         actionReady: true,
       },
       {
+        // Avoid HTTP 502 — Cloudflare replaces the JSON body with "error code: 502",
+        // which hid the real plant/SearchPlant payload error on LIFF.
         status: action.needLongdoKey
           ? 503
           : action.error?.includes("SSRF")
             ? 400
-            : 502,
+            : 422,
       }
     );
   }

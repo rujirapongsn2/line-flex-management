@@ -499,6 +499,15 @@ function normalizeOne(
   const lon = Number(o.lon ?? o.lng ?? o.longitude);
   const address =
     o.address != null ? String(o.address) : mappedAddress;
+  // Drop heavy geometry from raw — LDD SearchPlant WKT can be multi-MB.
+  let raw: unknown = item;
+  if (item && typeof item === "object") {
+    const copy = { ...(item as Record<string, unknown>) };
+    for (const k of ["geometryText", "geometry", "geom", "wkt", "the_geom"]) {
+      if (k in copy) delete copy[k];
+    }
+    raw = copy;
+  }
   return {
     id: o.id != null ? String(o.id) : undefined,
     name,
@@ -509,7 +518,7 @@ function normalizeOne(
     distance: (o.distance as string | number | undefined) ?? undefined,
     tags: Array.isArray(o.tags) ? o.tags.map(String) : undefined,
     url: o.url != null ? String(o.url) : undefined,
-    raw: item,
+    raw,
   };
 }
 
