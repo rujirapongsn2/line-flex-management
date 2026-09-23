@@ -8,6 +8,8 @@ services:
       - ./data:/app/data
     environment:
       NODE_ENV: production
+      # Softnix GenAI on LAN IP uses self-signed cert; Node fetch otherwise throws "fetch failed"
+      NODE_TLS_REJECT_UNAUTHORIZED: "0"
       PORT: "3456"
       DATABASE_URL: file:/app/data/linedev.db
       LINEDEV_SESSION_SECRET: ${LINEDEV_SESSION_SECRET:?set LINEDEV_SESSION_SECRET in .env}

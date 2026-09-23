@@ -364,22 +364,16 @@ export async function seedCheckinTemplates(prisma: PrismaClient): Promise<void> 
     sortOrder: 101,
   };
 
+  // Create-only: never overwrite admin edits from Flex console.
+  // writeRuntimeConfig calls ensureNearbySeeds after every save; upsert-update
+  // previously wiped checkin_ask / nearby_results back to seed defaults.
   for (const row of [ask, result]) {
-    await prisma.flexTemplate.upsert({
+    const existing = await prisma.flexTemplate.findUnique({
       where: { id: row.id },
-      create: row,
-      update: {
-        displayNameTh: row.displayNameTh,
-        conditionKey: row.conditionKey,
-        modelDescription: row.modelDescription,
-        triggerExamples: row.triggerExamples,
-        variables: row.variables,
-        kind: row.kind,
-        fields: row.fields,
-        enabled: row.enabled,
-        sortOrder: row.sortOrder,
-      },
+      select: { id: true },
     });
+    if (existing) continue;
+    await prisma.flexTemplate.create({ data: row });
   }
 }
 
