@@ -20,3 +20,7 @@ data/*
 # Prisma local DBs
 *.db
 *.db-journal
+
+# Local editor / agent backups
+*.bak
+*.bak-*
