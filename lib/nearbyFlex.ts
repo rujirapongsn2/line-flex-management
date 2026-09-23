@@ -69,7 +69,7 @@ export function buildLocationAskFlex(opts: LocationAskOpts = {}): FlexMessage {
             : []),
           {
             type: "text",
-            text: "Softnix FMM · Longdo Map",
+            text: "Softnix FMM · Location Action",
             size: "xs",
             color: "#888888",
             margin: "lg",
@@ -226,6 +226,105 @@ export function buildNearbyResultsFlex(opts: {
     type: "flex",
     altText: alt,
     contents: { type: "carousel", contents: bubbles.slice(0, 10) },
+  };
+}
+
+
+export type LocationChooserEndpoint = {
+  id: string;
+  label?: string;
+};
+
+const DEFAULT_LDD_CHOICES: LocationChooserEndpoint[] = [
+  { id: "soil", label: "ข้อมูลดิน" },
+  { id: "plant", label: "พืชที่เหมาะสม" },
+  { id: "pool", label: "แหล่งน้ำ" },
+];
+
+/**
+ * When Location Action has multiple HTTP endpoints and the user did not specify
+ * a type, ask them to pick before opening LIFF (each button carries ?tag=).
+ */
+export function buildLocationTypeChooserFlex(opts: {
+  liffId?: string | null;
+  endpoints?: LocationChooserEndpoint[] | null;
+  title?: string;
+  body?: string;
+}): FlexMessage {
+  const raw =
+    opts.endpoints && opts.endpoints.length > 0
+      ? opts.endpoints
+      : DEFAULT_LDD_CHOICES;
+  const choices = raw
+    .map((e) => ({
+      id: String(e.id || "").trim(),
+      label: (e.label || e.id || "").trim() || e.id,
+    }))
+    .filter((e) => e.id)
+    .slice(0, 4);
+  const title = opts.title || "เลือกประเภทข้อมูล";
+  const body =
+    opts.body ||
+    "เลือกสิ่งที่ต้องการค้นหาจากพิกัดของคุณ แล้วแชร์ตำแหน่งในขั้นถัดไป";
+
+  const buttons = choices.map((c, i) => {
+    const btn: Record<string, unknown> = {
+      type: "button",
+      style: i === 0 ? "primary" : "secondary",
+      height: "md",
+      action: {
+        type: "uri",
+        label: c.label.slice(0, 20),
+        uri: getLiffOpenUrl(opts.liffId, c.id),
+      },
+    };
+    if (i === 0) btn.color = ACCENT;
+    if (i > 0) btn.margin = "sm";
+    return btn;
+  });
+
+  return {
+    type: "flex",
+    altText: "เลือกประเภทข้อมูลก่อนแชร์พิกัด",
+    contents: {
+      type: "bubble",
+      size: "mega",
+      body: {
+        type: "box",
+        layout: "vertical",
+        spacing: "md",
+        contents: [
+          {
+            type: "text",
+            text: title,
+            weight: "bold",
+            size: "xl",
+            color: ACCENT,
+            wrap: true,
+          },
+          {
+            type: "text",
+            text: body,
+            wrap: true,
+            size: "sm",
+            color: "#555555",
+          },
+          {
+            type: "text",
+            text: "Softnix FMM · Location Action",
+            size: "xs",
+            color: "#888888",
+            margin: "lg",
+          },
+        ],
+      },
+      footer: {
+        type: "box",
+        layout: "vertical",
+        spacing: "sm",
+        contents: buttons,
+      },
+    },
   };
 }
 

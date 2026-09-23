@@ -6,7 +6,12 @@ import { getDefaultModel } from "@/lib/openrouter";
 import { readRuntimeConfig } from "@/lib/serverRuntimeConfig";
 import { recordWebhookUser } from "@/lib/webhookStore";
 import { detectNearbyIntent } from "@/lib/nearbyIntent";
-import { buildLocationAskFlex } from "@/lib/nearbyFlex";
+import {
+  buildLocationAskFlex,
+  buildLocationTypeChooserFlex,
+} from "@/lib/nearbyFlex";
+import { parseLocationActionJson } from "@/lib/locationAction";
+import { defaultLocationAction } from "@/lib/types";
 import { getEnvLiffId, resolveLiffId } from "@/lib/liffConfig";
 
 type LineEvent = {
@@ -65,6 +70,33 @@ async function replyCheckinAsk(opts: {
   return true;
 }
 
+async function replyLocationTypeChooser(opts: {
+  lineToken: string;
+  replyToken: string;
+  liffId?: string;
+  endpoints: Array<{ id: string; label?: string }>;
+}): Promise<boolean> {
+  const flex = buildLocationTypeChooserFlex({
+    liffId: resolveLiffId(opts.liffId) || getEnvLiffId(),
+    endpoints: opts.endpoints,
+  });
+  const result = await sendLineMessages({
+    channelAccessToken: opts.lineToken,
+    sendMode: "reply",
+    replyToken: opts.replyToken,
+    messages: [flex],
+  });
+  if (!result.ok) {
+    console.error("[webhook] location type chooser failed", result);
+    return false;
+  }
+  console.info(
+    "[webhook] hard-routed nearby intent → location_type_chooser",
+    `endpoints=${opts.endpoints.map((e) => e.id).join(",")}`
+  );
+  return true;
+}
+
 async function handleTextMessage(event: LineEvent): Promise<void> {
   const userId = event.source?.userId || "";
   const replyToken = event.replyToken || "";
@@ -99,9 +131,41 @@ async function handleTextMessage(event: LineEvent): Promise<void> {
     return;
   }
 
-  // P0: bypass LLM for nearby / check-in intents → always send LIFF checkin_ask
+  // P0: bypass LLM for nearby / check-in / LDD intents
   const nearby = detectNearbyIntent(text);
   if (nearby.matched) {
+    const locCfg =
+      runtime.line.locationAction ||
+      parseLocationActionJson("") ||
+      defaultLocationAction();
+    const endpoints =
+      locCfg.mode === "http" && Array.isArray(locCfg.http?.endpoints)
+        ? locCfg.http!.endpoints!.filter((e) => (e.urlTemplate || "").trim())
+        : [];
+    const tag = (nearby.tag || "").trim().toLowerCase();
+    const endpointIds = new Set(endpoints.map((e) => e.id.toLowerCase()));
+    const matchTags = new Set(
+      endpoints.flatMap((e) =>
+        (e.match?.tags || []).map((t) => String(t).toLowerCase())
+      )
+    );
+    const hasTypedEndpoint =
+      !!tag && (endpointIds.has(tag) || matchTags.has(tag));
+
+    // Multi HTTP endpoints + no clear type → ask user to pick first
+    if (locCfg.mode === "http" && endpoints.length >= 2 && !hasTypedEndpoint) {
+      await replyLocationTypeChooser({
+        lineToken,
+        replyToken,
+        liffId: runtime.line.liffId,
+        endpoints: endpoints.map((e) => ({
+          id: e.id,
+          label: e.label || e.id,
+        })),
+      });
+      return;
+    }
+
     await replyCheckinAsk({
       lineToken,
       replyToken,
