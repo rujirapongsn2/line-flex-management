@@ -168,7 +168,7 @@ export default function LineDevApp() {
       const status = await fetchRuntimeStatus();
       setServerRuntime(status);
       let merged = loaded;
-      if (status.ok && status.hydrate) {
+      if (status.ok && status.hydrate?.agent && status.hydrate?.line) {
         const h = status.hydrate;
         merged = {
           ...loaded,
@@ -289,29 +289,28 @@ export default function LineDevApp() {
   }
 
   async function saveTemplate(tpl: ConsoleTemplate) {
-    let next: ConsoleState | null = null;
-    setState((s) => {
-      const idx = s.templates.findIndex((t) => t.id === tpl.id);
-      const templates =
-        idx >= 0
-          ? s.templates.map((t) => (t.id === tpl.id ? tpl : t))
-          : [...s.templates, tpl];
-      next = { ...s, templates };
-      return next;
-    });
-    const r = await pushRuntime(next!);
+    // Build next from current state — do not rely on setState updater side effects
+    // (next can stay null and syncRuntimeConfig then throws reading .agent).
+    const idx = state.templates.findIndex((t) => t.id === tpl.id);
+    const templates =
+      idx >= 0
+        ? state.templates.map((t) => (t.id === tpl.id ? tpl : t))
+        : [...state.templates, tpl];
+    const next: ConsoleState = { ...state, templates };
+    setState(next);
+    const r = await pushRuntime(next);
     if (!r.ok) throw new Error(r.error || "บันทึกเทมเพลตไม่สำเร็จ");
     return r;
   }
 
   async function createTemplate() {
     const tpl = createEmptyTemplate();
-    let next: ConsoleState | null = null;
-    setState((s) => {
-      next = { ...s, templates: [...s.templates, tpl] };
-      return next;
-    });
-    const r = await pushRuntime(next!);
+    const next: ConsoleState = {
+      ...state,
+      templates: [...state.templates, tpl],
+    };
+    setState(next);
+    const r = await pushRuntime(next);
     if (!r.ok) throw new Error(r.error || "สร้างเทมเพลตไม่สำเร็จ");
     navigate("flex-edit", tpl.id);
     return r;

@@ -43,6 +43,12 @@ export async function syncRuntimeConfig(
   state: ConsoleState
 ): Promise<RuntimeSyncStatus> {
   try {
+    if (!state || !state.agent || !state.line) {
+      return {
+        ok: false,
+        error: "Console state incomplete (missing agent/line) — refresh and retry",
+      };
+    }
     const agent: Record<string, unknown> = { ...state.agent };
     const line: Record<string, unknown> = { ...state.line };
     // Never send empty secrets — avoids wiping non-empty SQLite values.
