@@ -416,7 +416,7 @@ export async function runLocationAction(opts: {
     Math.max(1, opts.input.limit ?? cfg.longdo?.limit ?? 10)
   );
   const span =
-    (opts.input.span || cfg.longdo?.span || "300m").trim() || "300m";
+    (opts.input.span || cfg.longdo?.span || "1000m").trim() || "1000m";
 
   void tag; // kept for clarity; effectiveTag used
   const search = await searchLongdoNearby(

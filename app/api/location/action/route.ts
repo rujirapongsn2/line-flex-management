@@ -260,6 +260,6 @@ export async function GET() {
     ok: true,
     hint: "POST { lat, lon|lng, tag?, intent?, query?, limit?, span?, userId?, displayName?, pushReply? }",
     modes: ["longdo_poi", "http", "none"],
-    defaults: { mode: "longdo_poi", span: "300m", limit: 10 },
+    defaults: { mode: "longdo_poi", span: "1000m", limit: 10 },
   });
 }

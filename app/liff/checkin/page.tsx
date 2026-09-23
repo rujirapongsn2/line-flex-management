@@ -232,8 +232,8 @@ export default function LiffNearbyPage() {
           displayName: profile.displayName,
           tag: tag || undefined,
           limit: 10,
-          span: "300m",
-          // Server: Location Action + LLM/Flex LINE push
+          // Omit span so server uses Location Action config (default 1000m).
+          // Hardcoding 300m hid nearby 7-11 around typical suburban GPS.
           pushReply: true,
         }),
       });

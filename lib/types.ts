@@ -67,7 +67,7 @@ export type LocationActionConfig = {
 export function defaultLocationAction(): LocationActionConfig {
   return {
     mode: "longdo_poi",
-    longdo: { defaultTags: "", limit: 10, span: "300m" },
+    longdo: { defaultTags: "", limit: 10, span: "1000m" },
     http: {
       method: "GET",
       urlTemplate: "",

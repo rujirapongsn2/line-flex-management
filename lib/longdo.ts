@@ -129,7 +129,7 @@ export async function searchLongdoNearby(
   }
 
   const limit = Math.min(20, Math.max(1, params.limit ?? 10));
-  const span = (params.span || "300m").trim() || "300m";
+  const span = (params.span || "1000m").trim() || "1000m";
   const tag = (params.tag || "").trim();
 
   const qs = new URLSearchParams();
