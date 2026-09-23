@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { runAgentTurn } from "@/lib/llmTools";
 import { sendLineMessages } from "@/lib/lineMessaging";
+import { stripMarkdownForLine } from "@/lib/lineText";
 import { getDefaultModel } from "@/lib/openrouter";
 import { readRuntimeConfig } from "@/lib/serverRuntimeConfig";
 import { recordWebhookUser } from "@/lib/webhookStore";
@@ -223,7 +224,7 @@ async function handleTextMessage(event: LineEvent): Promise<void> {
       messages: [
         {
           type: "text",
-          text: turn.assistantText || "รับข้อความแล้วครับ",
+          text: stripMarkdownForLine(turn.assistantText || "รับข้อความแล้วครับ"),
         },
       ],
     });

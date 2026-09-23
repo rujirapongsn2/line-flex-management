@@ -7,6 +7,7 @@ import type { LocationActionResult } from "./locationAction";
 import { sendLineMessages, type LineMessage } from "./lineMessaging";
 import { chatCompletion } from "./openrouter";
 import type { AgentConfig, FlexMessage, LocationActionConfig } from "./types";
+import { stripMarkdownForLine } from "./lineText";
 
 export type LocationReplyOutcome = {
   llmUsed: boolean;
@@ -24,10 +25,10 @@ function buildUserPrompt(
   const tagLine = result.tag ? `แท็ก/หมวด: ${result.tag}\n` : "";
   const guidance =
     result.mode === "none"
-      ? "ยังไม่มีรายการสถานที่ — ยืนยันพิกัดที่ได้รับ และถามว่าต้องการหาอะไรใกล้เคียง (เช่น 7-11, โรงพยาบาล) หรือข้อมูลดิน/พืช/แหล่งน้ำ"
+      ? "ยังไม่มีรายการสถานที่ — ยืนยันพิกัดที่ได้รับ และถามว่าต้องการหาอะไรใกล้เคียง (เช่น 7-11, โรงพยาบาล) หรือข้อมูลดิน/พืช/แหล่งน้ำ — ห้ามใช้ Markdown"
       : result.mode === "http"
-        ? "สรุปผลจาก API ให้ลูกค้าสั้น กระชับ เป็นมิตรเป็นภาษาไทย (ดิน/พืช/แหล่งน้ำ หรือรายการอื่นตามผล) — ยก 2–8 รายการเด่นถ้ามีหลายรายการ พร้อมค่าสำคัญในผลลัพธ์ — ห้ามแต่งข้อมูลที่ไม่มีในผลลัพธ์"
-        : "สรุปผลให้ลูกค้าสั้น กระชับ เป็นมิตรเป็นภาษาไทย หากมีรายการ แนะนำ 2–5 รายการเด่น พร้อมที่อยู่/ระยะถ้ามี — ห้ามแต่งข้อมูลที่ไม่มีในผลลัพธ์";
+        ? "สรุปผลจาก API ให้ลูกค้าสั้น กระชับ เป็นมิตรเป็นภาษาไทย (ดิน/พืช/แหล่งน้ำ หรือรายการอื่นตามผล) — ยก 2–8 รายการเด่นถ้ามีหลายรายการ พร้อมค่าสำคัญในผลลัพธ์ — ห้ามแต่งข้อมูลที่ไม่มีในผลลัพธ์ — ห้ามใช้ Markdown (** # เป็นต้น) ใช้ 1) 2) หรือ • แทน"
+        : "สรุปผลให้ลูกค้าสั้น กระชับ เป็นมิตรเป็นภาษาไทย หากมีรายการ แนะนำ 2–5 รายการเด่น พร้อมที่อยู่/ระยะถ้ามี — ห้ามแต่งข้อมูลที่ไม่มีในผลลัพธ์ — ห้ามใช้ Markdown";
   return `${who}พิกัด: lat=${result.lat}, lon=${result.lon}
 โหมด Location Action: ${result.mode}
 ${tagLine}
@@ -72,7 +73,9 @@ export async function replyAfterLocationAction(opts: {
           "คุณเป็นผู้ช่วย Softnix บน LINE ตอบสั้น ชัด เป็นภาษาไทย",
         "",
         "บริบท: ลูกค้าเพิ่งแชร์พิกัดผ่าน LIFF แล้วระบบรัน Location Action แล้ว",
-        "ตอบด้วยข้อความธรรมดาเท่านั้น (ไม่มี tool) — สรุปผลให้ลูกค้า",
+        "ตอบด้วยข้อความธรรมดาบน LINE เท่านั้น (ไม่มี tool) — สรุปผลให้ลูกค้า",
+        "ห้ามใช้ Markdown: ห้าม **, __, *, _, #, ```, และลิงก์แบบ [ข้อความ](url)",
+        "ใช้บรรทัดใหม่และเลข 1) 2) หรือ • แทนการทำตัวหนา/หัวข้อ",
       ].join("\n");
 
       const completion = await chatCompletion(
@@ -90,9 +93,9 @@ export async function replyAfterLocationAction(opts: {
         },
         { baseUrl: opts.agent.baseUrl }
       );
-      assistantText = (
-        completion.choices?.[0]?.message?.content || ""
-      ).trim();
+      assistantText = stripMarkdownForLine(
+        (completion.choices?.[0]?.message?.content || "").trim()
+      );
       if (assistantText) {
         llmUsed = true;
         messages.push({ type: "text", text: assistantText.slice(0, 4500) });
@@ -132,7 +135,7 @@ export async function replyAfterLocationAction(opts: {
   if (!messages.length && opts.result.ok && opts.result.summaryText) {
     messages.push({
       type: "text",
-      text: opts.result.summaryText.slice(0, 4500),
+      text: stripMarkdownForLine(opts.result.summaryText).slice(0, 4500),
     });
   }
 
