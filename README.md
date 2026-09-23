@@ -1,34 +1,25 @@
 # Softnix LineDev / FMM (LINE Flex Management)
 
-คอนโซล Agent สำหรับ LINE Flex · เก็บข้อมูลใน **SQLite** · รันบน Mac Air ด้วย Docker Compose
+คอนโซล Agent สำหรับ LINE Flex · เก็บข้อมูลใน **SQLite** · แนะนำรันด้วย **Docker Compose**
 
-## สองอินสแตนซ์บน Mac Air (อย่าปนกัน)
-
-| | Path | Container | Host port | URL |
-|---|---|---|---|---|
-| **Prod** | `~/Documents/code-air/LineDev` | `softnix-linedev` | **3456** | https://line.rujirapong.us |
-| **Dev** | `~/Documents/code-air/LineDev-dev` | `softnix-linedev-dev` | **3457** | https://line-dev.rujirapong.us |
-
-แต่ละโฟลเดอร์มี **`./data` แยกกัน** (SQLite คนละไฟล์) · ห้ามชี้ Dev compose ไปที่ data ของ Prod
+พอร์ตเริ่มต้นใน `docker-compose.yml` คือ **3456** (แก้ได้ตามเครื่องที่ติดตั้ง) · URL สาธารณะตั้งผ่าน `PUBLIC_BASE_URL` ใน `.env`
 
 ---
 
-## 1) ติดตั้ง Prod (Docker Compose — แนะนำ)
+## 1) ติดตั้งด้วย Docker Compose (แนะนำ)
 
 ```bash
-cd ~/Documents/code-air/LineDev
+cd <โฟลเดอร์โปรเจกต์>
 cp .env.example .env
 # ตั้ง LINEDEV_SESSION_SECRET (สุ่มครั้งเดียว)
 # openssl rand -base64 32
 # ถ้าบูตครั้งแรกยังไม่มี user ใน DB ให้ตั้ง INITIAL_ADMIN_PASSWORD ด้วย
+# ตั้ง PUBLIC_BASE_URL เป็นโดเมน HTTPS ที่ชี้มาที่พอร์ตของเครื่องนี้
 
 docker compose up -d --build
 ```
 
-Smoke:
-
-- http://127.0.0.1:3456/login
-- https://line.rujirapong.us/login
+เปิด `http://127.0.0.1:<พอร์ต>/login` (ค่าเริ่มต้นพอร์ต **3456**)
 
 - DB / runtime อยู่ที่ **`./data/`** (volume → `/app/data` ใน container)
 - ไฟล์หลัก: `data/linedev.db`
@@ -36,61 +27,35 @@ Smoke:
 
 หยุด: `docker compose down` · ดูล็อก: `docker compose logs -f`
 
----
-
-## 2) ติดตั้ง / สร้าง Dev (อินสแตนซ์ที่สอง)
-
-1. Clone หรือคัดลอก repo ไปที่ `~/Documents/code-air/LineDev-dev` (โฟลเดอร์แยกจาก Prod)
-2. แก้ **`docker-compose.yml` เฉพาะเครื่อง** (อย่า commit ค่าเหล่านี้ขึ้น `main`):
-   - `container_name: softnix-linedev-dev`
-   - `ports: "3457:3456"`
-   - `PUBLIC_BASE_URL` default: `https://line-dev.rujirapong.us`
-3. มี `.env` ของตัวเอง + `./data` ว่าง/ใหม่ (อย่าใช้ data ของ Prod)
-4. รัน:
-
-```bash
-cd ~/Documents/code-air/LineDev-dev
-docker compose up -d --build
-```
-
-5. Cloudflare Tunnel: `line-dev.rujirapong.us` → `http://127.0.0.1:3457`
-
-Smoke:
-
-- http://127.0.0.1:3457/login
-- https://line-dev.rujirapong.us/login
+ถ้าต้องการรันหลายอินสแตนซ์บนเครื่องเดียวกัน ให้แยกโฟลเดอร์ + `./data` + `.env` คนละชุด และปรับ `container_name` / `ports` / `PUBLIC_BASE_URL` ใน compose หรือ `.env` ของแต่ละชุดเอง
 
 ---
 
-## 3) ตัวแปรสภาพแวดล้อมสำคัญ
+## 2) ตัวแปรสภาพแวดล้อมสำคัญ
 
 | ตัวแปร | ความหมาย |
 |---|---|
 | `DATABASE_URL` | SQLite — Docker: `file:/app/data/linedev.db` · local: absolute เช่น `file:/path/to/.../data/linedev.db` (`npm run db:push` ตั้งให้อัตโนมัติ) |
-| `LINEDEV_SESSION_SECRET` | HMAC คุกกี้เซสชัน — **ตั้งใน `.env` เสมอใน production** |
+| `LINEDEV_SESSION_SECRET` | HMAC คุกกี้เซสชัน — **ตั้งใน `.env` เสมอเมื่อใช้งานจริง** |
 | `INITIAL_ADMIN_PASSWORD` | ใช้ครั้งเดียวถ้ายังไม่มี User และไม่มี `auth.json` ให้ migrate |
-| `PUBLIC_BASE_URL` | Prod: `https://line.rujirapong.us` · Dev: `https://line-dev.rujirapong.us` |
+| `PUBLIC_BASE_URL` | ฐาน URL สาธารณะ (HTTPS) สำหรับลิงก์ Flex / LIFF / webhook — ตั้งตามโดเมนที่ติดตั้ง |
 | `LIFF_ID` | LINE LIFF App ID |
 | `LONGDO_API_KEY` | Longdo Map API key (ฝั่งเซิร์ฟเวอร์เท่านั้น) |
 | `LONGDO_DEFAULT_TAGS` | CSV สำรอง เช่น `hospital,7-11,condominium,department_store` |
 | `POI_SHARED_SECRET` / `CHECKIN_SHARED_SECRET` | optional header `x-poi-secret` |
 
-หมายเหตุ: ใน `docker-compose.yml` ตั้ง `NODE_TLS_REJECT_UNAUTHORIZED=0` เพื่อให้ Node fetch ไป Softnix GenAI บน LAN ที่ใช้ self-signed cert ได้ (ไม่งั้นจะเจอ `fetch failed`)
+หมายเหตุ: ใน `docker-compose.yml` อาจตั้ง `NODE_TLS_REJECT_UNAUTHORIZED=0` เพื่อให้ Node fetch ไป endpoint ที่ใช้ self-signed cert ได้ (เช่น GenAI บน LAN) — เปิดเท่าที่จำเป็น
 
 อย่า commit ไฟล์ `.env` หรือ `data/*.db` / `data/*.json` ที่มี secret
 
 ---
 
-## 4) Webhook
+## 3) Webhook + tunnel
 
 Endpoint สาธารณะ (ไม่ต้องล็อกอิน): `POST/GET /api/line/webhook`
 
-| | URL |
-|---|---|
-| **Prod** | `https://line.rujirapong.us/api/line/webhook` |
-| **Dev** | `https://line-dev.rujirapong.us/api/line/webhook` |
-
-- Tunnel ชี้ไป host port ของอินสแตนซ์นั้น (Prod **3456** · Dev **3457**)
+- URL เต็ม: `{PUBLIC_BASE_URL}/api/line/webhook`
+- Tunnel / reverse proxy ชี้โดเมน HTTPS ไปที่พอร์ตที่ container ฟังบนเครื่อง
 - ใน LINE Developers ใส่ Webhook URL เป็น HTTPS แล้ว Verify
 - ในคอนโซลหน้า «การเชื่อม LINE» กดยืนยันว่าลงทะเบียน Webhook แล้ว
 
@@ -98,64 +63,36 @@ Endpoint สาธารณะ (ไม่ต้องล็อกอิน): `PO
 
 ---
 
-## 5) LIFF + Longdo nearby POI
+## 4) LIFF + Longdo nearby POI
 
 Flow: ผู้ใช้ถามสถานที่ใกล้เคียง → Agent ส่ง Flex `checkin_ask` → ผู้ใช้แชร์ GPS ผ่าน LIFF → `POST /api/poi/search` เรียก Longdo ฝั่งเซิร์ฟเวอร์ → ส่ง Flex รายการ POI
 
-| | LIFF Endpoint URL |
-|---|---|
-| **Prod** | `https://line.rujirapong.us/liff/checkin` |
-| **Dev** | ใช้ endpoint บน host `line-dev` (แยก LIFF app หรืออัปเดต Endpoint URL ชั่วคราวตอนเทส Dev) · Size: Full |
-
-Public APIs: `GET /api/liff/config`, `POST /api/poi/search`, `POST /api/checkin` (legacy)
-
-Templates: `checkin_ask` (location CTA), `nearby_results` (ผล Longdo)
+- LIFF Endpoint URL: `{PUBLIC_BASE_URL}/liff/checkin` (Size: Full)
+- Public APIs: `GET /api/liff/config`, `POST /api/poi/search`, `POST /api/checkin` (legacy)
+- Templates: `checkin_ask` (location CTA), `nearby_results` (ผล Longdo)
 
 LINE Developers → Messaging API → LIFF → Add → Endpoint URL ตามด้านบน → คัดลอก LIFF ID ใส่ `.env` แล้ว rebuild container
 
 ---
 
-## 6) Deploy sync (ops สั้น ๆ)
-
-หลัง **commit + push** ไป `origin/main`:
-
-1. **Prod** (`LineDev` / `softnix-linedev` เท่านั้น):
+## 5) รันแบบ local (npm) — สำหรับพัฒนา
 
 ```bash
-cd ~/Documents/code-air/LineDev
-git pull
-docker compose up -d --build --force-recreate
-```
-
-2. **Dev** (`LineDev-dev` / `softnix-linedev-dev`): pull แล้ว **เก็บ override ของ compose** (container_name / ports / PUBLIC_BASE_URL) ไว้ · อย่า checkout ทับ `docker-compose.yml` ของ Dev · จากนั้น rebuild เฉพาะ Dev:
-
-```bash
-cd ~/Documents/code-air/LineDev-dev
-git pull
-# ตรวจว่า docker-compose.yml ยังเป็น softnix-linedev-dev / 3457 / line-dev
-docker compose up -d --build --force-recreate
-```
-
----
-
-## 7) รันแบบ local (npm) — สำหรับพัฒนา
-
-```bash
-cd ~/Documents/code-air/LineDev   # หรือ LineDev-dev
+cd <โฟลเดอร์โปรเจกต์>
 cp .env.example .env
 # ตั้ง DATABASE_URL + LINEDEV_SESSION_SECRET
 npm install
 npm run db:push
-npm run dev          # พัฒนา (พอร์ต 3456)
+npm run dev          # พัฒนา (พอร์ต 3456 ตามค่าเริ่มต้นของแอป)
 # หรือ production บนเครื่อง:
 npm run build && npm start
 ```
 
-ถ้าจะรัน npm คู่กับ Docker Dev ที่ใช้ 3457 อยู่แล้ว ระวังชนพอร์ต — หยุด container ก่อน หรือเปลี่ยนพอร์ตใน next
+ถ้า Docker ใช้พอร์ตเดียวกันอยู่แล้ว ให้หยุด container ก่อน หรือเปลี่ยนพอร์ตฝั่งใดฝั่งหนึ่ง
 
 ---
 
-## 8) Login admin / เปลี่ยนรหัส
+## 6) Login admin / เปลี่ยนรหัส
 
 - Username เริ่มต้น: **`admin`**
 - รหัสผ่าน: จาก `INITIAL_ADMIN_PASSWORD` หรือจาก hash ที่ migrate จาก `auth.json` เดิม
@@ -169,7 +106,7 @@ npm run build && npm start
 
 ---
 
-## 9) Backup SQLite
+## 7) Backup SQLite
 
 ```bash
 # ขณะ container รันได้ แต่แนะนำหยุดเขียนสั้นๆ ก่อนคัดลอก
@@ -180,8 +117,8 @@ tar czf linedev-data-backup.tgz data/
 
 กู้คืน: วาง `linedev.db` กลับไปที่ `data/` แล้ว `docker compose up -d`
 
-สำรอง **Prod และ Dev แยกกัน** — คนละ `./data`
+ถ้ามีหลายอินสแตนซ์ ให้สำรอง **`./data` ของแต่ละโฟลเดอร์แยกกัน**
 
 ---
 
-**หมายเหตุความปลอดภัย:** อย่าใส่ API key / รหัสผ่านจริงใน image หรือ git · Webhook คงเป็นสาธารณะ · UI อื่นต้องล็อกอิน · `NODE_TLS_REJECT_UNAUTHORIZED=0` ใช้เฉพาะเพราะ GenAI LAN self-signed — อย่าเปิดกว้างโดยไม่จำเป็น
+**ความปลอดภัย:** อย่าใส่ API key / รหัสผ่านจริงใน image หรือ git · Webhook คงเป็นสาธารณะ · UI อื่นต้องล็อกอิน
