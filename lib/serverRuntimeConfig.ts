@@ -280,8 +280,8 @@ export function toRuntimeStatus(cfg: RuntimeConfig): RuntimeConfigStatus {
   const token = (cfg.line.channelAccessToken || "").trim();
   const secret = (cfg.line.channelSecret || "").trim();
   const liffId = (
-    (process.env.LIFF_ID || "").trim() ||
-    (cfg.line.liffId || "").trim()
+    (cfg.line.liffId || "").trim() ||
+    (process.env.LIFF_ID || "").trim()
   );
   const longdoKey = (
     (process.env.LONGDO_API_KEY || "").trim() ||

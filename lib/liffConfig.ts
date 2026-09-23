@@ -12,11 +12,11 @@ export function getEnvLiffId(): string {
   return (process.env.LIFF_ID || "").trim();
 }
 
-/** Prefer env LIFF_ID; fall back to runtime DB value. */
+/** Prefer runtime/DB LineConfig.liffId; fall back to env LIFF_ID. */
 export function resolveLiffId(runtimeLiffId?: string | null): string {
-  const envId = getEnvLiffId();
-  if (envId) return envId;
-  return (runtimeLiffId || "").trim();
+  const fromDb = (runtimeLiffId || "").trim();
+  if (fromDb) return fromDb;
+  return getEnvLiffId();
 }
 
 export function getCheckinPageUrl(tag?: string | null): string {
