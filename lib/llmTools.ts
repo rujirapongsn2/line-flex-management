@@ -406,6 +406,53 @@ export async function runAgentTurn(opts: {
 
   let assistantText = "";
 
+  /**
+   * Knowledge pass (LAIA / Softnix GenAI): when Agent has a custom baseUrl,
+   * the first tools-round often replies with text (e.g. «ไม่พบข้อมูล») without
+   * calling a tool — and never searches the knowledge base. Retry the same
+   * messages WITHOUT tools so GenAI can use RAG. Gate: LLM_KNOWLEDGE_PASS=1|0;
+   * default ON when baseUrl is set.
+   */
+  const knowledgePassEnv = (process.env.LLM_KNOWLEDGE_PASS || "").trim();
+  const knowledgePassEnabled =
+    knowledgePassEnv === "1"
+      ? true
+      : knowledgePassEnv === "0"
+        ? false
+        : Boolean((opts.baseUrl || "").trim());
+
+  const OUTAGE_TH =
+    "ขออภัยครับ ระบบตอบคำถามความรู้ยังเชื่อมต่อ GenAI ไม่สำเร็จในขณะนี้ กรุณาลองใหม่ภายหลัง หรือแจ้งผู้ดูแล Softnix GenAI";
+
+  function looksLikeNoData(text: string): boolean {
+    const t = (text || "").trim();
+    if (!t) return true;
+    return /ไม่พบข้อมูล|ไม่มีข้อมูล|ไม่พบในระบบ|ไม่มีในระบบ|no (relevant )?data|not found|i don't know|ไม่ทราบ/i.test(
+      t
+    );
+  }
+
+  async function callWithoutTools(
+    msgs: OpenRouterMessage[],
+    label: string
+  ): Promise<string> {
+    const completion = await chatCompletion(
+      opts.openRouterKey,
+      {
+        model,
+        messages: msgs,
+        // no tools — Softnix GenAI knowledge / RAG path
+      },
+      { baseUrl: opts.baseUrl }
+    );
+    rawRounds.push({ knowledgePass: label, completion });
+    const choice = completion.choices?.[0];
+    return (choice?.message?.content || "").trim();
+  }
+
+  let firstToolsRoundHadNoToolCall = false;
+  let toolsRoundText = "";
+
   for (let round = 0; round < maxRounds; round++) {
     const completion = await chatCompletion(
       opts.openRouterKey,
@@ -453,8 +500,55 @@ export async function runAgentTurn(opts: {
     }
 
     assistantText = (msg.content || "").trim();
+    toolsRoundText = assistantText;
+    if (round === 0) {
+      firstToolsRoundHadNoToolCall = true;
+    }
     messages.push({ role: "assistant", content: msg.content ?? "" });
     break;
+  }
+
+  // Knowledge pass: first turn with tools produced text only → retry without tools
+  if (
+    knowledgePassEnabled &&
+    firstToolsRoundHadNoToolCall &&
+    !state.flexMessage &&
+    !state.textReply
+  ) {
+    const baseMessages: OpenRouterMessage[] = [
+      { role: "system", content: systemContent },
+      { role: "user", content: userText },
+    ];
+    try {
+      const kpText = await callWithoutTools(baseMessages, "first");
+      if (kpText && !looksLikeNoData(kpText)) {
+        assistantText = kpText;
+      } else if (looksLikeNoData(toolsRoundText) || looksLikeNoData(kpText)) {
+        // Do NOT surface tools-round «ไม่พบข้อมูล» — retry once more
+        try {
+          const retryText = await callWithoutTools(baseMessages, "retry");
+          if (retryText && !looksLikeNoData(retryText)) {
+            assistantText = retryText;
+          } else {
+            assistantText = OUTAGE_TH;
+          }
+        } catch (retryErr) {
+          console.error("[llmTools] knowledge-pass retry failed", retryErr);
+          assistantText = OUTAGE_TH;
+        }
+      } else if (kpText) {
+        assistantText = kpText;
+      }
+    } catch (kpErr) {
+      console.error("[llmTools] knowledge-pass failed", kpErr);
+      // On failure, never return tools-round no-data; show outage
+      if (looksLikeNoData(toolsRoundText)) {
+        assistantText = OUTAGE_TH;
+      } else {
+        // Re-throw so webhook can map to GenAI connection failure style
+        throw kpErr;
+      }
+    }
   }
 
   if (!assistantText && state.textReply) {
@@ -469,6 +563,10 @@ export async function runAgentTurn(opts: {
     flexMessage: state.flexMessage,
     conditionKey: state.conditionKey,
     toolTrace,
-    raw: { model, rounds: rawRounds },
+    raw: {
+      model,
+      rounds: rawRounds,
+      knowledgePass: knowledgePassEnabled,
+    },
   };
 }

@@ -122,3 +122,27 @@ tar czf linedev-data-backup.tgz data/
 ---
 
 **ความปลอดภัย:** อย่าใส่ API key / รหัสผ่านจริงใน image หรือ git · Webhook คงเป็นสาธารณะ · UI อื่นต้องล็อกอิน
+
+
+---
+
+## 8) Prod machine 2 / multi-host install checklist
+
+สำหรับติดตั้งเครื่องที่สอง (เช่น `lb1` · พอร์ต 3456 ·โดเมน `https://hookai.softnix.co.th`):
+
+1. คัดลอกโปรเจกต์ + `cp .env.example .env`
+2. ตั้งอย่างน้อย:
+   - `PUBLIC_BASE_URL=https://hookai.softnix.co.th` (ไม่มี `/` ท้าย)
+   - `LINEDEV_SESSION_SECRET` (สุ่มครั้งเดียว)
+   - `INITIAL_ADMIN_PASSWORD` (บูตครั้งแรก)
+   - `REQUIRE_LINE_SIGNATURE=1` และ**อย่า**ตั้ง `ALLOW_UNSIGNED_WEBHOOK=1`
+   - `LINE_CHANNEL_SECRET` / Channel Access Token ของ **channel ของเครื่องนั้น** (ห้ามคัดลอกจาก Prod อื่นหรือ Dev)
+   - `LIFF_ID` ของ LIFF App ที่ Endpoint = `{PUBLIC_BASE_URL}/liff/checkin`
+3. พอร์ต: compose เริ่มต้น map `3456:3456` (Dev บน Air ใช้ `3457:3456` คนละโฟลเดอร์)
+4. Docker หรือ Podman: `docker compose up -d --build` (หรือ `podman compose`)
+5. Nginx / TLS ชี้ HTTPS โดเมน → `127.0.0.1:3456` · ตรวจ CAA / cert
+6. ในคอนโซลหน้า «เชื่อม LINE» ตรวจว่า Webhook URL ขึ้นต้นด้วย `PUBLIC_BASE_URL` ไม่ใช่ IP ภายใน
+7. Flex ใน DB ที่เคยเก็บ URL เต็มของโฮสต์เก่า (`line.rujirapong.us`) จะถูก rewrite ตอน render เป็น `PUBLIC_BASE_URL` อัตโนมัติ — ไม่ต้อง migrate ข้อมูลก็ใช้งานได้
+
+อย่า hardcode โดเมนส่วนตัวในโค้ด · ตั้งผ่าน env เท่านั้น
+

@@ -44,6 +44,7 @@ export default function LineConnectPage({
   const [showToken, setShowToken] = useState(false);
   const [users, setUsers] = useState<WebhookUser[]>([]);
   const [webhookUrl, setWebhookUrl] = useState("/api/line/webhook");
+  const [publicBaseUrl, setPublicBaseUrl] = useState("");
   const [copied, setCopied] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [savedSection, setSavedSection] = useState<
@@ -57,12 +58,31 @@ export default function LineConnectPage({
   }, [line]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      setWebhookUrl(`${window.location.origin}/api/line/webhook`);
-    }
+    let cancelled = false;
+    (async () => {
+      let base = "";
+      try {
+        const res = await fetch("/api/liff/config");
+        const data = (await res.json()) as { publicBaseUrl?: string };
+        base = (data.publicBaseUrl || "").trim().replace(/\/+$/, "");
+      } catch {
+        /* ignore */
+      }
+      if (cancelled) return;
+      if (!base && typeof window !== "undefined") {
+        base = window.location.origin;
+      }
+      if (base) {
+        setPublicBaseUrl(base);
+        setWebhookUrl(`${base}/api/line/webhook`);
+      }
+    })();
     void refreshUsers();
     const id = window.setInterval(() => void refreshUsers(), 8000);
-    return () => window.clearInterval(id);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
   }, []);
 
   async function refreshUsers() {
@@ -231,9 +251,14 @@ export default function LineConnectPage({
         <div className="card" style={{ padding: "18px 20px" }}>
           <div className="fw-600 mb-4">LIFF ID (แชร์พิกัดค้นหาใกล้เคียง)</div>
           <div className="text-sm text-muted mb-12">
-            สร้าง LIFF App ใน LINE Developers · Endpoint URL =
-            https://line.rujirapong.us/liff/checkin · Size: Full
-            · ใส่ LIFF ID ที่นี่ หรือตั้ง <code>LIFF_ID</code> ใน .env (env มีลำดับสูงกว่า)
+            สร้าง LIFF App ใน LINE Developers · Endpoint URL ={" "}
+            <code>
+              {publicBaseUrl
+                ? `${publicBaseUrl}/liff/checkin`
+                : "{PUBLIC_BASE_URL}/liff/checkin"}
+            </code>{" "}
+            · Size: Full · ใส่ LIFF ID ที่นี่ หรือตั้ง <code>LIFF_ID</code> ใน
+            .env (env มีลำดับสูงกว่า)
           </div>
           <div className="field" style={{ margin: 0 }}>
             <input

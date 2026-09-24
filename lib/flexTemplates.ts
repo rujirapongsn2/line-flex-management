@@ -1,5 +1,6 @@
 import type { FlexMessage, TemplateField, TemplateId } from "./types";
 import { ACCENT } from "./types";
+import { rewritePublicFields, rewritePublicUrl } from "./liffConfig";
 
 const DEMO_IMG = (seed: number, w = 1024, h = 576) =>
   `https://picsum.photos/seed/linedev${seed}/${w}/${h}`;
@@ -175,10 +176,35 @@ function uriButton(label: string, uri: string, primary = true) {
   };
 }
 
+/** Deep-rewrite legacy absolute hosts / {{PUBLIC_BASE_URL}} in Flex JSON uris. */
+function rewriteFlexJsonUris(node: unknown): unknown {
+  if (Array.isArray(node)) {
+    return node.map(rewriteFlexJsonUris);
+  }
+  if (node && typeof node === "object") {
+    const obj = node as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (
+        typeof v === "string" &&
+        (k === "uri" || k === "url" || /Url$/i.test(k) || k === "src")
+      ) {
+        out[k] = rewritePublicUrl(v);
+      } else {
+        out[k] = rewriteFlexJsonUris(v);
+      }
+    }
+    return out;
+  }
+  return node;
+}
+
 export function buildFlex(
   id: TemplateId,
   fields: Record<string, string>
 ): FlexMessage {
+  // Rewrite prior-install absolute URLs to current PUBLIC_BASE_URL (no DB mutate)
+  fields = rewritePublicFields(fields);
   const altText = fields.altText || "Flex Message";
 
   if (id === "raw-json") {
@@ -202,6 +228,7 @@ export function buildFlex(
         },
       };
     }
+    contents = rewriteFlexJsonUris(contents) as Record<string, unknown>;
     return { type: "flex", altText, contents };
   }
 

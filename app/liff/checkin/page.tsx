@@ -7,6 +7,8 @@ type LiffConfig = {
   liffId?: string;
   configured?: boolean;
   setupHint?: string | null;
+  publicBaseUrl?: string;
+  checkinPageUrl?: string;
   hasLongdoKey?: boolean;
   actionReady?: boolean;
   locationActionMode?: string;
@@ -107,6 +109,7 @@ export default function LiffNearbyPage() {
     displayName: string;
   } | null>(null);
   const [setupHint, setSetupHint] = useState<string | null>(null);
+  const [checkinPageUrl, setCheckinPageUrl] = useState("");
   const [tag, setTag] = useState("");
   const [resultCount, setResultCount] = useState<number | null>(null);
 
@@ -167,7 +170,14 @@ export default function LiffNearbyPage() {
       try {
         const cfgRes = await fetch("/api/liff/config", { cache: "no-store" });
         const cfg = (await cfgRes.json()) as LiffConfig;
-        if (cancelled) return;
+        
+        setCheckinPageUrl(
+          cfg.checkinPageUrl ||
+            (cfg.publicBaseUrl
+              ? `${String(cfg.publicBaseUrl).replace(/\/+$/, "")}/liff/checkin`
+              : "")
+        );
+if (cancelled) return;
         if (!cfg.configured || !cfg.liffId) {
           setSetupHint(
             cfg.setupHint ||
@@ -430,7 +440,10 @@ export default function LiffNearbyPage() {
                   Endpoint URL:
                   <br />
                   <code style={{ fontSize: 12 }}>
-                    https://line.rujirapong.us/liff/checkin
+                    {checkinPageUrl ||
+                      (typeof window !== "undefined"
+                        ? `${window.location.origin}/liff/checkin`
+                        : "/liff/checkin")}
                   </code>
                 </div>
               ) : null}
